@@ -1,11 +1,11 @@
 [project]
 name = "cremalink-ha"
-version = "0.3.0b5"
+version = "0.3.0b6"
 description = "Local-first Home Assistant integration for De'Longhi Coffee Link machines"
 requires-python = ">=3.13.2"
 dependencies = [
     "homeassistant>=2026.10.0",
-    "aioecam==0.1.0b5",
+    "aioecam==0.1.0b6",
 ]
 
 [tool.pytest.ini_options]

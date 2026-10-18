@@ -161,3 +161,32 @@ async def test_total_duration_is_bounded(
     await asyncio.wait_for(reader.task, 1)
     assert reader.stop_reason == "time_limit" and reader.attempted == 1
     assert reader.result == "partial" and not reader.running
+
+
+async def test_slow_valid_response_is_not_a_false_timeout(
+    hass: HomeAssistant,
+    machine: FakeMachine,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(recipe_reader, "SOUL_PROPERTIES", NAMES[:1])
+    monkeypatch.setattr(recipe_reader, "MAX_DURATION", 5)
+    machine.device.properties[NAMES[0]] = encode_value(
+        Frame(RESPONSE, 0xB0, 0xF0, bytes.fromhex("01 01 0014 0028 00b4"))
+    )
+    entry = await setup(hass)
+    original = entry.runtime_data.device.link.read
+    calls = []
+
+    async def delayed(name, **kwargs):
+        if name == NAMES[0]:
+            calls.append(name)
+            await asyncio.sleep(2.1)  # live responses exceeded the old 2s limit
+        return await original(name, **kwargs)
+
+    monkeypatch.setattr(entry.runtime_data.device.link, "read", delayed)
+    reader = entry.runtime_data.recipe_reader
+    reader.start(hass, entry)
+    await asyncio.wait_for(reader.task, 6)
+    assert reader.result == "completed" and reader.received == 1
+    assert not reader.errors and calls == [NAMES[0]]  # no retry/duplicate read
+    assert not machine.received

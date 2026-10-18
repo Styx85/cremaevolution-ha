@@ -188,9 +188,20 @@ model/software properties. No Cloud login or discovery is needed. Other Soul
 firmwares may expose different names; they are not assumed compatible just
 because they use the same family profile. Other families have no reader button.
 
-Reads are sequential, with a two-second limit per property, a two-minute total
+Reads are sequential, paced at least 250 ms apart, with a 25-second limit per property, a two-minute total
 budget and a stop after three consecutive read failures. Busy/disconnected
 machines stop the run, repeated presses do not queue runs, and HA unload cancels
 it. Valid results from a partial run remain in the catalogue. CRC/payload errors
 remain diagnostic errors, not drink availability claims. No new beverage controls
 are created. Keep competing Coffee Link LAN servers disabled.
+
+
+### Recipe-read timing and descriptor defaults (0.3.0b6)
+
+The first live read returned valid recipes after the old two-second deadline,
+including one response about 20 seconds later. The reader now waits up to 25
+seconds per property and pauses 250 ms between reads; the overall 120-second
+budget and three-failure stop still apply. There are no automatic read retries.
+Descriptor defaults outside their reported min/max are preserved as raw values
+with `default_in_range: false`, rather than losing the entire descriptor. This
+flag is diagnostic and does not authorize those values for brewing.

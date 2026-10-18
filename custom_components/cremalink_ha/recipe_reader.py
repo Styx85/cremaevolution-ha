@@ -23,7 +23,8 @@ SOUL_PROPERTIES = tuple(
     "d562_versione_sw_ui",
     "software_version",
 )
-READ_TIMEOUT = 2.0
+READ_TIMEOUT = 25.0
+READ_PAUSE = 0.25
 MAX_DURATION = 120.0
 MAX_CONSECUTIVE_FAILURES = 3
 IDENTITY_PROPERTIES = frozenset(SOUL_PROPERTIES[-4:])
@@ -63,6 +64,8 @@ class RecipeReader:
             "valid_catalog_entries": self.valid_catalog_entries,
             "errors": [dict(error) for error in self.errors],
             "max_duration_seconds": MAX_DURATION,
+            "read_timeout_seconds": READ_TIMEOUT,
+            "read_pause_seconds": READ_PAUSE,
         }
 
     def start(self, hass: Any, entry: Any) -> bool:
@@ -132,6 +135,9 @@ class RecipeReader:
                                 {"property": name, "error": "invalid_catalog_value"}
                             )
                 self._changed()
+                await asyncio.sleep(
+                    min(READ_PAUSE, max(0.0, deadline - time.monotonic()))
+                )
             self.result = "partial" if self.stop_reason or self.errors else "completed"
         except asyncio.CancelledError:
             self.result = "cancelled"
