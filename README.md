@@ -151,7 +151,7 @@ Not affiliated with De'Longhi or Ayla Networks.
 Distributed under the **AGPL-3.0-or-later** license, like the upstream
 projects. See [LICENSE](LICENSE).
 
-### Passive catalogue and freshness diagnostics (next beta)
+### Passive catalogue and freshness diagnostics (0.3.0b4)
 
 The HA diagnostic download includes `identity`, `freshness` and `recipe_catalog`.
 The configured protocol family is separate from the OEM identifier stored during
@@ -170,5 +170,4 @@ properties and validation results. It creates no entities, sends no additional
 reads/writes and does not infer brewability from a descriptor or priority list.
 It may remain empty until recipe properties arrive. The bounded in-memory cache
 resets on reload. Household names are redacted; serial/PIN/settings frames are
-excluded. This requires the accompanying aioecam 0.1.0b5 candidate and is not part
-of the published 0.3.0b3 release.
+excluded. This requires aioecam 0.1.0b5 and was introduced in 0.3.0b4.
