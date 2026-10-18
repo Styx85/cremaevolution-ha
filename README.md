@@ -46,7 +46,32 @@ probe tools used for the measurements are in [tools/](tools/).
 | Device API with confirmed commands, A2 statistics (verified live: on, espresso, off, full A2 table) | ✅ done |
 | Cloud onboarding and wake fallback (verified with a real account) | ✅ done |
 | Home Assistant integration without add-on, migration | ✅ done (tested against a real HA core) |
-| 24 h soak test and release | ⏳ planned |
+| Beta releases | ✅ available; 0.3.0b3 uses aioecam 0.1.0b4 |
+| 24 h soak test | ⏳ planned |
+
+### Hardware validation and beta scope
+
+Live protocol tests have been performed on a **PrimaDonna Soul ECAM610.75**.
+Other model variants, including Eletta Explore, have only codec, captured-frame
+and simulated-device coverage; their behaviour on real hardware needs
+confirmation by owners of those machines. Eletta write sessions are not
+implemented. Integration tests run against a real Home Assistant core with a
+simulated coffee machine, and do not establish hardware compatibility for
+other models.
+
+Version **0.3.0b3** pins **aioecam 0.1.0b4**, including its improved answer
+routing and handling of retained profile/recipe answers. The library's new
+APIs for settings, profile selection and custom beverage parameters are not
+yet exposed as Home Assistant entities or services. The final recipe-polling
+fix has simulated-device coverage rather than a repeat hardware test; whether
+monitor changes require polling also remains open. See the library's
+[hardware results and limitations](https://github.com/Styx85/aioecam/blob/main/docs/m7-protocol.md).
+
+The hot-water counter now reads A2 ID `3019`, confirmed by the ECAM610.75
+hot-water test and the operator's observed increment. The previous "Tea"
+label was incorrect; that unsupported entity is removed. The existing
+hot-water entity keeps its unique ID. ID `3018` remains available as an
+unidentified raw statistic rather than being given a guessed meaning.
 
 ---
 
@@ -85,6 +110,9 @@ ask you to sign in once, to fetch the local key.
   bit does not reflect the tank on this machine.
 - During a beverage the machine reports status "ready"; "Busy" is derived
   from its activity instead.
+- The raw descale-load sensor is a disabled-by-default diagnostic entity;
+  its unit and weighting are not established. Enable it manually if needed
+  for investigation. Existing enabled entities retain their current setting.
 
 ### Additions in this fork (since 0.2)
 
