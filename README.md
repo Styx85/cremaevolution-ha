@@ -2,6 +2,9 @@
 
 **Local-first Home Assistant integration for De'Longhi Coffee Link machines (PrimaDonna Soul, Eletta Explore, …).**
 
+This is the fork maintained by **[Styx85](https://github.com/Styx85)**.
+The original authors are acknowledged in [Credits](#-credits).
+
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?category=integration&repository=cremalink-ha&owner=Styx85)
 [![License](https://img.shields.io/github/license/Styx85/cremalink-ha?style=for-the-badge&color=success)](LICENSE)
 
@@ -46,15 +49,43 @@ probe tools used for the measurements are in [tools/](tools/).
 | Device API with confirmed commands, A2 statistics (verified live: on, espresso, off, full A2 table) | ✅ done |
 | Cloud onboarding and wake fallback (verified with a real account) | ✅ done |
 | Home Assistant integration without add-on, migration | ✅ done (tested against a real HA core) |
-| 24 h soak test and release | ⏳ planned |
+| Beta releases | ✅ available; 0.3.0b3 uses aioecam 0.1.0b4 |
+| 24 h soak test | ⏳ planned |
+
+### Hardware validation and beta scope
+
+Live protocol tests have been performed on a **PrimaDonna Soul ECAM610.75**.
+Other model variants, including Eletta Explore, have only codec, captured-frame
+and simulated-device coverage; their behaviour on real hardware needs
+confirmation by owners of those machines. Eletta write sessions are not
+implemented. Integration tests run against a real Home Assistant core with a
+simulated coffee machine, and do not establish hardware compatibility for
+other models.
+
+Version **0.3.0b3** pins **aioecam 0.1.0b4**, including its improved answer
+routing and handling of retained profile/recipe answers. The library's new
+APIs for settings, profile selection and custom beverage parameters are not
+yet exposed as Home Assistant entities or services. The final recipe-polling
+fix has simulated-device coverage rather than a repeat hardware test; whether
+monitor changes require polling also remains open. See the library's
+[hardware results and limitations](https://github.com/Styx85/aioecam/blob/main/docs/m7-protocol.md).
+
+The hot-water counter now reads A2 ID `3019`, confirmed by the ECAM610.75
+hot-water test and the operator's observed increment. The previous "Tea"
+label was incorrect; that unsupported entity is removed. The existing
+hot-water entity keeps its unique ID. ID `3018` remains available as an
+unidentified raw statistic rather than being given a guessed meaning.
 
 ---
 
 ## Installation
 
 1. **HACS:** click the HACS badge above, or add this repository to HACS as a
-   custom repository. Search for "Cremalink", install it and restart Home
-   Assistant.
+   custom repository: `https://github.com/Styx85/cremalink-ha` (category:
+   Integration). Check that the repository is `Styx85/cremalink-ha`, install
+   it and restart Home Assistant. If HACS still lists the original author
+   after switching forks, refresh its repository information; `codeowners`
+   in this fork identifies `@Styx85`.
 2. **Manual:** copy `custom_components/cremalink_ha` to your
    `config/custom_components/` directory and restart Home Assistant.
 
@@ -85,6 +116,9 @@ ask you to sign in once, to fetch the local key.
   bit does not reflect the tank on this machine.
 - During a beverage the machine reports status "ready"; "Busy" is derived
   from its activity instead.
+- The raw descale-load sensor is a disabled-by-default diagnostic entity;
+  its unit and weighting are not established. Enable it manually if needed
+  for investigation. Existing enabled entities retain their current setting.
 
 ### Additions in this fork (since 0.2)
 

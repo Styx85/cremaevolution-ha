@@ -13,6 +13,7 @@ from homeassistant.const import (
     PERCENTAGE,
     UnitOfVolume,
 )
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -176,12 +177,6 @@ STATISTICS_SENSORS = [
         None,
     ),
     (
-        "tea",
-        "Tea",
-        "mdi:tea",
-        None,
-    ),
-    (
         "coffee_pot",
         "Coffee pot",
         "mdi:coffee-maker",
@@ -266,6 +261,15 @@ async def async_setup_entry(hass, entry, async_add_entities):
     )
 
     if statistics_coordinator is not None:
+        # Statistics are currently supported for ECAM61x only. Its confirmed
+        # hot-water counter is A2 ID 3019, previously mislabelled as "tea".
+        # Retire that phantom entity; keep the existing hot-water unique ID.
+        registry = er.async_get(hass)
+        if stale := registry.async_get_entity_id(
+            "sensor", DOMAIN, f"{entry.entry_id}_statistics_tea"
+        ):
+            registry.async_remove(stale)
+
         for key, name, icon, unit in STATISTICS_SENSORS:
             entities.append(
                 CremalinkStatisticsSensor(
@@ -528,6 +532,8 @@ class CremalinkStatisticsSensor(
             # formula are not established, so do not expose it as a
             # Home Assistant long-term increasing total.
             self._attr_state_class = None
+            self._attr_entity_category = EntityCategory.DIAGNOSTIC
+            self._attr_entity_registry_enabled_default = False
 
         if key == "total_water_l":
             self._attr_suggested_display_precision = 1

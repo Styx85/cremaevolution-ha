@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 from homeassistant.config_entries import ConfigEntryState
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
@@ -77,6 +78,69 @@ async def test_statistics_read_locally(hass: HomeAssistant, machine: FakeMachine
     assert stats.data["known"]["descale_count"] == 30
     sensor = hass.states.get(_entity(hass, entry, "sensor:statistics_total_beverages"))
     assert sensor is not None and sensor.state == str(396 + 5231 + 2 + 180)
+
+
+async def test_raw_descale_sensor_is_opt_in_and_keeps_user_choice(
+    hass: HomeAssistant, machine: FakeMachine
+) -> None:
+    entry = await _setup(hass)
+    registry = er.async_get(hass)
+    raw_id = _entity(hass, entry, "sensor:statistics_descale_load_raw")
+    raw = registry.async_get(raw_id)
+    assert raw is not None
+    assert raw.disabled_by is er.RegistryEntryDisabler.INTEGRATION
+    assert raw.entity_category is EntityCategory.DIAGNOSTIC
+    assert hass.states.get(raw_id) is None
+
+    # Ordinary maintenance counters remain enabled.
+    count_id = _entity(hass, entry, "sensor:statistics_descale_count")
+    assert registry.async_get(count_id).disabled_by is None
+
+    # An explicit user choice survives a reload even though the default is off.
+    registry.async_update_entity(raw_id, disabled_by=None)
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    await entry.runtime_data.statistics_coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert registry.async_get(raw_id).disabled_by is None
+    state = hass.states.get(raw_id)
+    assert state is not None and state.state == "981155"
+
+
+async def test_hot_water_updates_and_retires_incorrect_tea_entity(
+    hass: HomeAssistant, machine: FakeMachine
+) -> None:
+    machine.statistics.update({3018: 0, 3019: 2})
+    entry = MockConfigEntry(domain=DOMAIN, version=2, title="Soul", data=V2_DATA,
+                            unique_id=V2_DATA["dsn"])  # fmt: skip
+    entry.add_to_hass(hass)
+    registry = er.async_get(hass)
+    old_tea = registry.async_get_or_create(
+        "sensor", DOMAIN, f"{entry.entry_id}_statistics_tea", suggested_object_id="old_tea"
+    )
+    existing_water = registry.async_get_or_create(
+        "sensor", DOMAIN, f"{entry.entry_id}_statistics_hot_water",
+        suggested_object_id="existing_hot_water",
+    )
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    stats = entry.runtime_data.statistics_coordinator
+    await stats.async_refresh()
+    await hass.async_block_till_done()
+    water_id = _entity(hass, entry, "sensor:statistics_hot_water")
+    assert water_id == existing_water.entity_id
+    assert registry.async_get(old_tea.entity_id) is None
+    assert registry.async_get_entity_id(
+        "sensor", DOMAIN, f"{entry.entry_id}_statistics_tea"
+    ) is None
+    assert hass.states.get(water_id).state == "2"
+
+    # Reproduce the operator's hot-water observation; A2 ID 3018 stays zero.
+    machine.statistics[3019] = 3
+    await stats.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get(water_id).state == "3"
+    assert stats.data["unknown"][3018] == 0
 
 
 async def test_unreachable_machine_retries_later(hass: HomeAssistant) -> None:
