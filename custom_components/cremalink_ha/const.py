@@ -1,28 +1,35 @@
 """Constants for the Cremalink Home Assistant integration."""
 
-DEVICE_NAME = "device_name"
-
 DOMAIN = "cremalink_ha"
-CONF_ADDON_URL = "addon_url"
+
+# Config entry v2 (aioecam, no add-on)
 CONF_DSN = "dsn"
-CONF_LAN_KEY = "lan_key"
 CONF_DEVICE_IP = "device_ip"
-CONF_DEVICE_MAP = "device_map"
+CONF_LAN_KEY = "lan_key"
+CONF_KEY_ID = "key_id"
+CONF_PROFILE = "profile"
+CONF_REFRESH_TOKEN = "refresh_token"  # optional: cloud wake fallback and service properties
 
-CONF_CONNECTION_TYPE = "connection_type"
-CONF_REFRESH_TOKEN = "refresh_token"
-CONF_TOKEN_FILE = "token_file"
+# Options
+CONF_LAN_PORT = "lan_port"
+CONF_ADVERTISE_IP = "advertise_ip"
+DEFAULT_LAN_PORT = 10280
 
-# Cloud-assisted onboarding (cloud login replaces manual device-map/DSN entry)
+# Config flow fields
 CONF_EMAIL = "email"
 CONF_PASSWORD = "password"
-CONF_REGION = "region"
 CONF_MANUAL_SETUP = "manual_setup"
-DEFAULT_REGION = "EU"  # only region with valid app credentials for v1 — see research.md #1
 
-CONNECTION_LOCAL = "local"
-CONNECTION_CLOUD = "cloud"
+# Config entry v1 (cremalink + add-on), only read by the migration
+LEGACY_CONF_ADDON_URL = "addon_url"
+LEGACY_CONF_DEVICE_MAP = "device_map"
+LEGACY_CONF_CONNECTION_TYPE = "connection_type"
+LEGACY_CONF_TOKEN_FILE = "token_file"
+LEGACY_DEVICE_MAP_TO_PROFILE = {
+    "ECAM610": "ecam61x",
+    "ECAM612": "ecam61x",
+    "ECAM452": "ecam45x",
+}
 
-DEFAULT_ADDON_URL = "http://localhost:10280"
-CUSTOM_MAP_DIR = "cremalink_custom_maps"
-TOKEN_DIR = "cremalink_tokens"
+DEFAULT_PROFILE = "ecam61x"
+MANUFACTURER = "De'Longhi"

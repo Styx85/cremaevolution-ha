@@ -1,42 +1,27 @@
-"""Tests for diagnostics.py redaction of cloud-assisted onboarding secrets."""
-import asyncio
-from unittest.mock import MagicMock
+from __future__ import annotations
+
+import json
+
+from homeassistant.core import HomeAssistant
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.cremalink_ha.const import DOMAIN
-from custom_components.cremalink_ha.diagnostics import (
-    REDACT_KEYS,
-    async_get_config_entry_diagnostics,
-)
+from custom_components.cremalink_ha.diagnostics import async_get_config_entry_diagnostics
+from tests.conftest import LAN_KEY, V2_DATA
+from tests.fakes.fake_machine import FakeMachine
 
 
-def _run(coro):
-    return asyncio.run(coro)
+async def test_diagnostics_redact_secrets(hass: HomeAssistant, machine: FakeMachine) -> None:
+    data = {**V2_DATA, "refresh_token": "refresh-secret"}
+    entry = MockConfigEntry(domain=DOMAIN, version=2, title="Soul", data=data, unique_id=data["dsn"])
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
 
-
-def test_diagnostics_redacts_sensitive_fields():
-    entry = MagicMock()
-    entry.data = {
-        "email": "user@example.com",
-        "password": "hunter2",
-        "access_token": "at-secret",
-        "refresh_token": "rt-secret",
-        "lan_key": "lan-secret",
-        "device_ip": "192.168.1.5",
-        "dsn": "DSN1",
-        "device_map": "ECAM452",
-    }
-    entry.options = {}
-    entry.entry_id = "entry1"
-
-    hass = MagicMock()
-    coordinator = MagicMock()
-    coordinator.data = {"status": "ok"}
-    hass.data = {DOMAIN: {"entry1": {"coordinator": coordinator}}}
-
-    result = _run(async_get_config_entry_diagnostics(hass, entry))
-
-    redacted = result["entry_data"]
-    for key in REDACT_KEYS:
-        assert redacted[key] == "**REDACTED**"
-    assert redacted["dsn"] == "DSN1"
-    assert redacted["device_map"] == "ECAM452"
+    diag = await async_get_config_entry_diagnostics(hass, entry)
+    dumped = json.dumps(diag, default=str)
+    assert LAN_KEY not in dumped and "refresh-secret" not in dumped and "127.0.0.1" not in dumped
+    assert diag["profile"] == "ecam61x"
+    assert diag["link"]["state"] == "active" and diag["link"]["key_exchanges"] >= 1
+    assert diag["monitor"]["status_name"] == "in_standby"
+    assert diag["cloud_fallback_configured"] is True

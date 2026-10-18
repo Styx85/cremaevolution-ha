@@ -2,17 +2,19 @@
   "domain": "cremalink_ha",
   "name": "Cremalink for Home-Assistant",
   "codeowners": [
-    "@miditkl"
+    "@Styx85"
   ],
+  "config_flow": true,
   "dependencies": [],
-  "documentation": "https://github.com/miditkl/cremalink-ha",
+  "documentation": "https://github.com/Styx85/cremalink-ha",
   "integration_type": "hub",
   "iot_class": "local_polling",
-  "config_flow": true,
-  "requirements": [
-    "cremalink@git+https://github.com/Styx85/cremalink.git@71c68faf8df8a17c7516661480b9326160057abd"
+  "issue_tracker": "https://github.com/Styx85/cremalink-ha/issues",
+  "loggers": [
+    "aioecam"
   ],
-  "issue_tracker": "https://github.com/miditkl/cremalink-ha/issues",
-  "version": "v0.2.0b12",
-  "quality_scale": "bronze"
+  "requirements": [
+    "aioecam==0.1.0b2"
+  ],
+  "version": "0.3.0b2"
 }

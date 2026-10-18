@@ -1,254 +1,173 @@
-"""Tests for the cloud-assisted onboarding config flow (config_flow.py).
+"""Config, reauth, reconfigure and options flows."""
 
-Covers spec US1 (cloud login replaces manual device-map/DSN entry), US2
-(automatic model detection + manual fallback), US3 (automatic LAN
-discovery -> local connection), and US4 (graceful cloud-only fallback).
-"""
-import asyncio
-from pathlib import Path
-from unittest.mock import MagicMock
+from __future__ import annotations
+
+from typing import Any
+from unittest.mock import AsyncMock, patch
 
 import pytest
-from custom_components.cremalink_ha import config_flow as cf_mod
-from custom_components.cremalink_ha.config_flow import CremalinkConfigFlow
-from custom_components.cremalink_ha.const import (
-    CONF_CONNECTION_TYPE,
-    CONF_DEVICE_MAP,
-    CONF_DSN,
-    CONF_TOKEN_FILE,
-    CONNECTION_CLOUD,
-    CONNECTION_LOCAL,
-)
+from aioecam.cloud.api import CloudDevice
+from aioecam.cloud.onboarding import OnboardedMachine, Onboarding
+from aioecam.discovery import ModuleInfo
+from aioecam.exceptions import AuthError
+from homeassistant.config_entries import SOURCE_USER
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
+from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+from custom_components.cremalink_ha.const import DOMAIN
+from tests.conftest import DSN, LAN_KEY, V2_DATA
+
+FLOW = "custom_components.cremalink_ha.config_flow"
+LOGIN = {"email": "user@example.com", "password": "secret"}
 
 
-def _run(coro):
-    return asyncio.run(coro)
+def _machine(dsn: str = DSN, *, lan_key: str | None = LAN_KEY, name: str = "Soul") -> OnboardedMachine:
+    device = CloudDevice(dsn=dsn, name=name, oem_model="DL-millcore", lan_enabled=lan_key is not None,
+                         lan_ip="192.168.1.50", connection_status="Online")  # fmt: skip
+    return OnboardedMachine(device=device, profile_family="ecam61x", lan_key=lan_key, key_id=58915)
 
 
-def _make_hass(tmp_path):
-    hass = MagicMock()
-
-    async def _executor(func, *args, **kwargs):
-        return func(*args, **kwargs)
-
-    hass.async_add_executor_job = _executor
-    hass.config.path = lambda *parts: str(tmp_path.joinpath(*parts))
-    return hass
+def _onboarding(*machines: OnboardedMachine) -> AsyncMock:
+    return AsyncMock(return_value=Onboarding(refresh_token="refresh-1", machines=list(machines)))
 
 
-def _make_flow(hass) -> CremalinkConfigFlow:
-    flow = CremalinkConfigFlow()
-    flow.hass = hass
-    flow.context = {}
-    return flow
+async def _start(hass: HomeAssistant) -> dict[str, Any]:
+    return await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
 
 
-class _FakeToken:
-    def save(self, path):
-        with open(path, "w") as f:
-            f.write("{}")
-        return path
-
-
-class _FakeClient:
-    """Configurable fake cremalink.Client, controlled via class attrs."""
-
-    raw_devices: list = []
-    coffee_devices: list = []
-    serial = None
-    lan_config = {"lan_enabled": False, "lanip_key": None, "lan_ip": None, "status": None}
-
-    def __init__(self, token_path):
-        self.token_path = token_path
-
-    def get_devices(self):
-        return _FakeClient.raw_devices
-
-    def list_account_devices(self):
-        return _FakeClient.coffee_devices
-
-    def get_serial_number(self, dsn):
-        return _FakeClient.serial
-
-    def get_lan_config(self, dsn):
-        return _FakeClient.lan_config
-
-
-@pytest.fixture(autouse=True)
-def _patch_cloud(monkeypatch):
-    monkeypatch.setattr(cf_mod, "authenticate_cloud", lambda email, password: _FakeToken())
-    monkeypatch.setattr(cf_mod, "Client", _FakeClient)
-    monkeypatch.setattr(cf_mod, "get_available_maps", lambda hass: ["ECAM452", "ECAM612"])
-    monkeypatch.setattr(cf_mod, "get_map_data", lambda hass, name: {"support": {"local": True, "cloud": True}})
-    _FakeClient.raw_devices = []
-    _FakeClient.coffee_devices = []
-    _FakeClient.serial = None
-    _FakeClient.lan_config = {"lan_enabled": False, "lanip_key": None, "lan_ip": None, "status": None}
-    yield
-
-
-class TestCloudLoginStep:
-    def test_single_coffee_device_creates_entry_without_prompt(self, tmp_path, monkeypatch):
-        _FakeClient.raw_devices = ["DSN1"]
-        _FakeClient.coffee_devices = [
-            {"dsn": "DSN1", "product_name": "PrimaDonna", "oem_model": "DL-pd-soul", "lan_enabled": False}
-        ]
-        monkeypatch.setattr(cf_mod, "detect_model_id", lambda *a, **k: "ECAM452")
-
-        flow = _make_flow(_make_hass(tmp_path))
-        result = _run(flow.async_step_user({"email": "a@b.com", "password": "pw", "manual_setup": False}))
-
-        assert result["type"] == "create_entry"
-        assert result["data"][CONF_DSN] == "DSN1"
-        assert result["data"][CONF_DEVICE_MAP] == "ECAM452"
-
-    def test_multi_device_account_shows_device_select(self, tmp_path):
-        _FakeClient.raw_devices = ["DSN1", "DSN2"]
-        _FakeClient.coffee_devices = [
-            {"dsn": "DSN1", "product_name": "PrimaDonna", "oem_model": "DL-pd-soul"},
-            {"dsn": "DSN2", "product_name": "Dinamica", "oem_model": "DL-dinamica-plus"},
-        ]
-
-        flow = _make_flow(_make_hass(tmp_path))
-        result = _run(flow.async_step_user({"email": "a@b.com", "password": "pw", "manual_setup": False}))
-
-        assert result["type"] == "form"
-        assert result["step_id"] == "device_select"
-
-    def test_invalid_credentials_show_auth_failed(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(cf_mod, "authenticate_cloud", lambda email, password: (_ for _ in ()).throw(ValueError("bad creds")))
-
-        flow = _make_flow(_make_hass(tmp_path))
-        result = _run(flow.async_step_user({"email": "a@b.com", "password": "wrong", "manual_setup": False}))
-
-        assert result["type"] == "form"
-        assert result["step_id"] == "user"
-        assert result["errors"]["base"] == "auth_failed"
-
-    def test_zero_coffee_devices_shows_no_coffee_machine_error(self, tmp_path):
-        _FakeClient.raw_devices = ["DSN1"]
-        _FakeClient.coffee_devices = []
-
-        flow = _make_flow(_make_hass(tmp_path))
-        result = _run(flow.async_step_user({"email": "a@b.com", "password": "pw", "manual_setup": False}))
-
-        assert result["errors"]["base"] == "no_coffee_machine"
-
-    def test_zero_devices_shows_no_devices_error(self, tmp_path):
-        _FakeClient.raw_devices = []
-        _FakeClient.coffee_devices = []
-
-        flow = _make_flow(_make_hass(tmp_path))
-        result = _run(flow.async_step_user({"email": "a@b.com", "password": "pw", "manual_setup": False}))
-
-        assert result["errors"]["base"] == "no_devices"
-
-    def test_advanced_setup_checkbox_routes_to_manual_step_unchanged(self, tmp_path):
-        flow = _make_flow(_make_hass(tmp_path))
-        result = _run(flow.async_step_user({"email": "", "password": "", "manual_setup": True}))
-
-        assert result["type"] == "form"
-        assert result["step_id"] == "manual"
-
-
-class TestModelDetectionFallback:
-    def test_unresolved_model_routes_to_manual_map_prefilled(self, tmp_path, monkeypatch):
-        _FakeClient.raw_devices = ["DSN1"]
-        _FakeClient.coffee_devices = [{"dsn": "DSN1", "product_name": "Mystery Machine", "oem_model": "DL-unknown"}]
-        monkeypatch.setattr(cf_mod, "detect_model_id", lambda *a, **k: None)
-
-        flow = _make_flow(_make_hass(tmp_path))
-        result = _run(flow.async_step_user({"email": "a@b.com", "password": "pw", "manual_setup": False}))
-
-        assert result["type"] == "form"
-        assert result["step_id"] == "manual_map"
-        assert result["description_placeholders"]["dsn"] == "DSN1"
-        assert result["description_placeholders"]["device_name"] == "Mystery Machine"
-
-        result2 = _run(flow.async_step_manual_map({CONF_DEVICE_MAP: "ECAM612"}))
-        assert result2["type"] == "create_entry"
-        assert result2["data"][CONF_DEVICE_MAP] == "ECAM612"
-
-
-class TestLocalConnectionCompletion:
-    def test_lan_enabled_and_local_supported_creates_local_entry(self, tmp_path, monkeypatch):
-        _FakeClient.raw_devices = ["DSN1"]
-        _FakeClient.coffee_devices = [{"dsn": "DSN1", "product_name": "PrimaDonna", "oem_model": "DL-pd-soul"}]
-        _FakeClient.lan_config = {"lan_enabled": True, "lanip_key": "KEY123", "lan_ip": "192.168.1.5", "status": "Online"}
-        monkeypatch.setattr(cf_mod, "detect_model_id", lambda *a, **k: "ECAM610")
-
-        flow = _make_flow(_make_hass(tmp_path))
-        result = _run(flow.async_step_user({"email": "a@b.com", "password": "pw", "manual_setup": False}))
-
-        assert result["type"] == "create_entry"
-        assert result["data"][CONF_CONNECTION_TYPE] == CONNECTION_LOCAL
-        assert result["data"]["lan_key"] == "KEY123"
-        assert result["data"]["device_ip"] == "192.168.1.5"
-
-        # Local control must retain the authenticated cloud token so the
-        # machine can additionally expose live A2 statistics.
-        token_file = result["data"][CONF_TOKEN_FILE]
-        assert token_file.endswith("DSN1.json")
-        assert Path(token_file).exists()
-
-
-class TestCloudFallbackCompletion:
-    def test_lan_disabled_completes_as_cloud_automatically(self, tmp_path, monkeypatch):
-        _FakeClient.raw_devices = ["DSN1"]
-        _FakeClient.coffee_devices = [{"dsn": "DSN1", "product_name": "PrimaDonna", "oem_model": "DL-pd-soul"}]
-        _FakeClient.lan_config = {"lan_enabled": False, "lanip_key": None, "lan_ip": None, "status": None}
-        monkeypatch.setattr(cf_mod, "detect_model_id", lambda *a, **k: "ECAM452")
-
-        flow = _make_flow(_make_hass(tmp_path))
-        result = _run(flow.async_step_user({"email": "a@b.com", "password": "pw", "manual_setup": False}))
-
-        assert result["type"] == "create_entry"
-        assert result["data"][CONF_CONNECTION_TYPE] == CONNECTION_CLOUD
-        assert "token_file" in result["data"]
-
-
-class TestLocalConnectionWithoutStatistics:
-    def test_non_ecam610_local_entry_discards_cloud_token(
-        self,
-        tmp_path,
-        monkeypatch,
+async def test_login_single_machine_creates_entry(hass: HomeAssistant) -> None:
+    with (
+        patch(f"{FLOW}.onboard", _onboarding(_machine())),
+        patch("custom_components.cremalink_ha.async_setup_entry", return_value=True),
     ):
-        _FakeClient.raw_devices = ["DSN2"]
-        _FakeClient.coffee_devices = [
-            {
-                "dsn": "DSN2",
-                "product_name": "Other Machine",
-                "oem_model": "DL-other",
-            }
-        ]
-        _FakeClient.lan_config = {
-            "lan_enabled": True,
-            "lanip_key": "KEY456",
-            "lan_ip": "192.168.1.6",
-            "status": "Online",
-        }
+        result = await _start(hass)
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], LOGIN)
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["title"] == "Soul"
+    assert result["data"] == {"dsn": DSN, "device_ip": "192.168.1.50", "lan_key": LAN_KEY,
+                              "key_id": 58915, "profile": "ecam61x",
+                              "refresh_token": "refresh-1"}  # fmt: skip
+    assert "password" not in result["data"] and "email" not in result["data"]
+    assert result["result"].unique_id == DSN
 
-        monkeypatch.setattr(
-            cf_mod,
-            "detect_model_id",
-            lambda *a, **k: "ECAM452",
+
+async def test_login_several_machines_asks(hass: HomeAssistant) -> None:
+    other = _machine("AC000W000000009", name="Eletta")
+    with (
+        patch(f"{FLOW}.onboard", _onboarding(_machine(), other)),
+        patch("custom_components.cremalink_ha.async_setup_entry", return_value=True),
+    ):
+        result = await _start(hass)
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], LOGIN)
+        assert result["step_id"] == "select"
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"dsn": "AC000W000000009"}
         )
+    assert result["type"] is FlowResultType.CREATE_ENTRY and result["title"] == "Eletta"
 
-        flow = _make_flow(_make_hass(tmp_path))
 
-        result = _run(
-            flow.async_step_user(
-                {
-                    "email": "a@b.com",
-                    "password": "pw",
-                    "manual_setup": False,
-                }
-            )
+@pytest.mark.parametrize(
+    ("side_effect", "error"),
+    [(AuthError("rejected"), "invalid_auth"), (TimeoutError(), "cannot_connect")],
+)
+async def test_login_errors(hass: HomeAssistant, side_effect: Exception, error: str) -> None:
+    with patch(f"{FLOW}.onboard", AsyncMock(side_effect=side_effect)):
+        result = await _start(hass)
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], LOGIN)
+    assert result["type"] is FlowResultType.FORM and result["errors"] == {"base": error}
+
+
+async def test_machine_without_lan_key_aborts(hass: HomeAssistant) -> None:
+    with patch(f"{FLOW}.onboard", _onboarding(_machine(lan_key=None))):
+        result = await _start(hass)
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], LOGIN)
+    assert result["type"] is FlowResultType.ABORT and result["reason"] == "no_lan"
+
+
+async def test_manual_setup(hass: HomeAssistant) -> None:
+    module = ModuleInfo(dsn=DSN, registered=True, registration_type="AP-Mode")
+    with (
+        patch(f"{FLOW}.probe_module", AsyncMock(return_value=module)),
+        patch("custom_components.cremalink_ha.async_setup_entry", return_value=True),
+    ):
+        result = await _start(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"manual_setup": True}
         )
+        assert result["step_id"] == "manual"
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"device_ip": " 192.168.1.50 ", "lan_key": LAN_KEY, "profile": "ecam61x"},
+        )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"] == {"dsn": DSN, "device_ip": "192.168.1.50", "lan_key": LAN_KEY,
+                              "profile": "ecam61x"}  # fmt: skip
 
-        assert result["type"] == "create_entry"
-        assert result["data"][CONF_CONNECTION_TYPE] == CONNECTION_LOCAL
-        assert CONF_TOKEN_FILE not in result["data"]
 
-        token_dir = tmp_path / "cremalink_tokens"
-        assert not (token_dir / "DSN2.json").exists()
+async def test_manual_setup_module_not_ready(hass: HomeAssistant) -> None:
+    module = ModuleInfo(dsn=None, registered=True, registration_type=None)
+    with patch(f"{FLOW}.probe_module", AsyncMock(return_value=module)):
+        result = await _start(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"manual_setup": True}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"device_ip": "192.168.1.50", "lan_key": LAN_KEY, "profile": "ecam61x"}
+        )
+    assert result["errors"] == {"base": "module_not_ready"}
+
+
+async def test_reauth_fills_in_lan_key(hass: HomeAssistant) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, version=2, unique_id=DSN,
+                            data={"dsn": DSN, "device_ip": None, "lan_key": None, "profile": "ecam61x"})  # fmt: skip
+    entry.add_to_hass(hass)
+    with (
+        patch(f"{FLOW}.onboard", _onboarding(_machine())),
+        patch("custom_components.cremalink_ha.async_setup_entry", return_value=True),
+    ):
+        result = await entry.start_reauth_flow(hass)
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], LOGIN)
+    assert result["type"] is FlowResultType.ABORT and result["reason"] == "reauth_successful"
+    assert entry.data["lan_key"] == LAN_KEY and entry.data["device_ip"] == "192.168.1.50"
+    assert entry.data["refresh_token"] == "refresh-1"
+
+
+async def test_reconfigure_ip(hass: HomeAssistant) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, version=2, unique_id=DSN, data=V2_DATA)
+    entry.add_to_hass(hass)
+    module = ModuleInfo(dsn=DSN, registered=True, registration_type="AP-Mode")
+    with (
+        patch(f"{FLOW}.probe_module", AsyncMock(return_value=module)),
+        patch("custom_components.cremalink_ha.async_setup_entry", return_value=True),
+    ):
+        result = await entry.start_reconfigure_flow(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"device_ip": "192.168.1.77"}
+        )
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.data["device_ip"] == "192.168.1.77"
+
+
+async def test_reconfigure_rejects_other_machine(hass: HomeAssistant) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, version=2, unique_id=DSN, data=V2_DATA)
+    entry.add_to_hass(hass)
+    other = ModuleInfo(dsn="AC000W999999999", registered=True, registration_type="AP-Mode")
+    with patch(f"{FLOW}.probe_module", AsyncMock(return_value=other)):
+        result = await entry.start_reconfigure_flow(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"device_ip": "192.168.1.77"}
+        )
+    assert result["errors"] == {"base": "wrong_machine"}
+
+
+async def test_options(hass: HomeAssistant) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, version=2, unique_id=DSN, data=V2_DATA)
+    entry.add_to_hass(hass)
+    with patch("custom_components.cremalink_ha.async_setup_entry", return_value=True):
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {"lan_port": 10299, "advertise_ip": "192.168.1.10"}
+        )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options == {"lan_port": 10299, "advertise_ip": "192.168.1.10"}

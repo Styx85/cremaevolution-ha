@@ -6,16 +6,14 @@
 [![License](https://img.shields.io/github/license/Styx85/cremalink-ha?style=for-the-badge&color=success)](LICENSE)
 
 > [!IMPORTANT]
-> **This fork is being rewritten from the ground up.**
+> **Version 0.3 is a ground-up rewrite: no add-on any more.**
 >
-> The rewrite removes the Cremalink Server add-on: Home Assistant talks to the
-> machine directly over the local network (Ayla LAN mode) through the new async
-> library **aioecam**. The De'Longhi cloud is only used to fetch the LAN key
-> during setup and, optionally, as a fallback to wake the machine.
->
-> Until the rewrite is released, `main` still contains the add-on based
-> integration documented under [Current version](#current-version-add-on-based).
-> Entities, history and dashboards will be migrated automatically.
+> Home Assistant talks to the machine directly over the local network (Ayla LAN
+> mode) through the new async library **aioecam**. The De'Longhi cloud is only
+> used to fetch the LAN key during setup and, optionally, as a fallback to wake
+> the machine. Existing installations are migrated automatically: entities,
+> entity ids, history and dashboards stay. You can uninstall the Cremalink
+> Server add-on afterwards.
 
 ---
 
@@ -46,37 +44,49 @@ probe tools used for the measurements are in [tools/](tools/).
 | Protocol codec, monitor parsing, model profiles | ✅ done |
 | Local LAN transport (verified live on an ECAM610.75) | ✅ done |
 | Device API with confirmed commands, A2 statistics (verified live: on, espresso, off, full A2 table) | ✅ done |
-| Cloud onboarding and wake fallback | ⏭️ next |
-| Home Assistant integration without add-on, migration | ⏳ planned |
+| Cloud onboarding and wake fallback (verified with a real account) | ✅ done |
+| Home Assistant integration without add-on, migration | ✅ done (tested against a real HA core) |
 | 24 h soak test and release | ⏳ planned |
 
 ---
 
-## Current version (add-on based)
+## Installation
 
-### Installation
-
-1. **Add-on (local connection only):** install and configure the Cremalink
-   Server add-on, which bridges the machine and Home Assistant. See the
-   [add-on documentation](addons/cremalink-server/README.md).
-2. **Integration via HACS:** click the HACS badge above, or add this repository
-   to HACS as a custom repository. Search for "Cremalink", install it and
-   restart Home Assistant.
-3. **Manual installation:** copy `custom_components/cremalink_ha` to your
+1. **HACS:** click the HACS badge above, or add this repository to HACS as a
+   custom repository. Search for "Cremalink", install it and restart Home
+   Assistant.
+2. **Manual:** copy `custom_components/cremalink_ha` to your
    `config/custom_components/` directory and restart Home Assistant.
 
-### Configuration
+**Network requirement:** in LAN mode the machine connects *to* Home Assistant.
+It must be able to reach Home Assistant on TCP port **10280** (changeable in
+the integration options). With Docker, use host networking or publish the port
+and set the announced address in the options.
+
+## Configuration
 
 1. Go to **Settings** > **Devices & Services** > **Add Integration** and search
    for **Cremalink**.
-2. Sign in with your De'Longhi Coffee Link account. The integration discovers
-   your machines, detects the model and connects locally through the add-on
-   when LAN details are available, otherwise through the cloud.
-3. Without a cloud account, tick **Advanced setup** on the first screen to
-   enter the device map, DSN, LAN key and IP (local) or a refresh token (cloud)
-   by hand.
+2. Sign in with your De'Longhi Coffee Link account. The integration finds your
+   machine, its model, its IP address and its local key. Only a refresh token
+   is stored, never your password.
+3. Already know the IP address and LAN key? Tick **Manual setup** instead.
 
-### Additions in this fork
+Coming from the add-on version: nothing to do. After the update the existing
+entry is migrated on the next start. Entries that used the cloud connection
+ask you to sign in once, to fetch the local key.
+
+### Good to know
+
+- After a restart of its Wi-Fi module (e.g. a power cut) the machine accepts
+  local connections only after it has reached the De'Longhi cloud once. The
+  integration retries and reports this in the log.
+- The "water tank empty" sensor is not created for the PrimaDonna Soul: its
+  bit does not reflect the tank on this machine.
+- During a beverage the machine reports status "ready"; "Busy" is derived
+  from its activity instead.
+
+### Additions in this fork (since 0.2)
 
 - Native **A2 statistics** read from ECAM610-class machines: beverage totals
   and per-beverage counters, maintenance counts, operating water, water since

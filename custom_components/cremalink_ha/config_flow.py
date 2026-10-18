@@ -1,509 +1,260 @@
-"""Config flow for the Cremalink integration."""
+"""Config flow: cloud-assisted onboarding by default, manual LAN setup as fallback.
 
-import json
+Only the Ayla refresh token is stored, never the account password.
+"""
+
+from __future__ import annotations
+
 import logging
-import os
+from typing import Any
 
+import aiohttp
 import voluptuous as vol
-from cremalink.devices import get_device_maps, load_device_map
-from homeassistant import config_entries
-from homeassistant.core import HomeAssistant
+from aioecam.cloud.onboarding import OnboardedMachine, onboard
+from aioecam.discovery import probe_module
+from aioecam.ecam.profile import available_families
+from aioecam.exceptions import AuthError, EcamError
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlowWithReload,
+)
+from homeassistant.core import callback
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.selector import (
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
+)
 
-from cremalink import Client, authenticate_cloud, detect_model_id
-
-from .const import *
+from .const import (
+    CONF_ADVERTISE_IP,
+    CONF_DEVICE_IP,
+    CONF_DSN,
+    CONF_EMAIL,
+    CONF_KEY_ID,
+    CONF_LAN_KEY,
+    CONF_LAN_PORT,
+    CONF_MANUAL_SETUP,
+    CONF_PASSWORD,
+    CONF_PROFILE,
+    CONF_REFRESH_TOKEN,
+    DEFAULT_LAN_PORT,
+    DEFAULT_PROFILE,
+    DOMAIN,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
+_PASSWORD = TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD))
+_EMAIL = TextSelector(TextSelectorConfig(type=TextSelectorType.EMAIL, autocomplete="username"))
 
-def get_available_maps(hass: HomeAssistant) -> list[str]:
-    """Retrieve available device maps, including custom ones.
-
-    Args:
-        hass: The Home Assistant instance.
-
-    Returns:
-        A list of available device map identifiers.
-    """
-    try:
-        # Get built-in maps from the library
-        maps = list(get_device_maps())
-    except Exception:
-        maps = []
-
-    # Check for custom maps in the configuration directory
-    custom_dir = hass.config.path(CUSTOM_MAP_DIR)
-    if os.path.exists(custom_dir):
-        for f in os.listdir(custom_dir):
-            if f.endswith(".json"):
-                maps.append(f"custom:{f}")
-    maps.sort()
-    return maps
+LOGIN_SCHEMA = vol.Schema(
+    {
+        vol.Optional(CONF_EMAIL): _EMAIL,
+        vol.Optional(CONF_PASSWORD): _PASSWORD,
+        vol.Optional(CONF_MANUAL_SETUP, default=False): bool,
+    }
+)
+REAUTH_SCHEMA = vol.Schema({vol.Required(CONF_EMAIL): _EMAIL, vol.Required(CONF_PASSWORD): _PASSWORD})
 
 
-def get_map_data(hass: HomeAssistant, map_name: str) -> dict:
-    """Retrieve data for a specific map."""
-    if map_name.startswith("custom:"):
-        filename = map_name.replace("custom:", "", 1)
-        custom_dir = hass.config.path(CUSTOM_MAP_DIR)
-        filepath = os.path.join(custom_dir, filename)
+def _profile_selector() -> SelectSelector:
+    return SelectSelector(
+        SelectSelectorConfig(options=available_families(), mode=SelectSelectorMode.DROPDOWN)
+    )
+
+
+def _entry_data(machine: OnboardedMachine, refresh_token: str) -> dict[str, Any]:
+    return {
+        CONF_DSN: machine.device.dsn,
+        CONF_DEVICE_IP: machine.device.lan_ip,
+        CONF_LAN_KEY: machine.lan_key,
+        CONF_KEY_ID: machine.key_id,
+        CONF_PROFILE: machine.profile_family or DEFAULT_PROFILE,
+        CONF_REFRESH_TOKEN: refresh_token,
+    }
+
+
+class CremalinkConfigFlow(ConfigFlow, domain=DOMAIN):
+    VERSION = 2
+
+    def __init__(self) -> None:
+        self._machines: dict[str, OnboardedMachine] = {}
+        self._refresh_token: str | None = None
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> CremalinkOptionsFlow:
+        return CremalinkOptionsFlow()
+
+    async def _login(self, email: str, password: str) -> dict[str, str]:
+        """Run onboarding; returns form errors (empty on success)."""
         try:
-            with open(filepath, "r") as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    else:
-        try:
-            return load_device_map(map_name)
-        except Exception:
-            return {}
+            result = await onboard(async_get_clientsession(self.hass), email, password)
+        except AuthError:
+            return {"base": "invalid_auth"}
+        except (aiohttp.ClientError, TimeoutError, EcamError) as err:
+            _LOGGER.debug("onboarding failed: %s", err)
+            return {"base": "cannot_connect"}
+        self._refresh_token = result.refresh_token
+        self._machines = {m.device.dsn: m for m in result.machines}
+        if not self._machines:
+            return {"base": "no_machines"}
+        return {}
 
+    # --- cloud-assisted setup ---------------------------------------------------
 
-class CremalinkConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for Cremalink."""
-
-    VERSION = 1
-    _addon_url = DEFAULT_ADDON_URL
-    _temp_token_file: str | None = None
-    _discovered_devices: list[str] = []
-    _selected_map: str | None = None
-
-    # Cloud-assisted onboarding state (spec: Cloud-Assisted Device Onboarding)
-    _cloud_token_file: str | None = None
-    _cloud_devices: list[dict] = []
-    _cloud_selected_device: dict | None = None
-
-    async def async_step_user(self, user_input=None):
-        """Handle the initial step: cloud login (email/password), replacing the
-        previous device-map-first flow. An "advanced setup" checkbox routes to
-        :meth:`async_step_manual` for users without cloud account access.
-        """
-        errors = {}
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
         if user_input is not None:
             if user_input.get(CONF_MANUAL_SETUP):
                 return await self.async_step_manual()
-
-            email = user_input.get(CONF_EMAIL)
-            password = user_input.get(CONF_PASSWORD)
-            if not email or not password:
+            if not user_input.get(CONF_EMAIL) or not user_input.get(CONF_PASSWORD):
                 errors["base"] = "missing_credentials"
             else:
+                errors = await self._login(user_input[CONF_EMAIL], user_input[CONF_PASSWORD])
+                if not errors:
+                    if len(self._machines) == 1:
+                        return await self._create_from(next(iter(self._machines)))
+                    return await self.async_step_select()
+        return self.async_show_form(step_id="user", data_schema=LOGIN_SCHEMA, errors=errors)
 
-                def _login_and_discover():
-                    token = authenticate_cloud(email, password)
-                    token_dir = self.hass.config.path(TOKEN_DIR)
-                    os.makedirs(token_dir, exist_ok=True)
-                    temp_file = os.path.join(token_dir, "temp_token.json")
-                    token.save(temp_file)
-                    client = Client(temp_file)
-                    raw_devices = client.get_devices()
-                    coffee_devices = client.list_account_devices()
-                    return temp_file, raw_devices, coffee_devices
-
-                try:
-                    temp_file, raw_devices, coffee_devices = (
-                        await self.hass.async_add_executor_job(_login_and_discover)
-                    )
-                except (
-                    Exception
-                ) as e:
-                    _LOGGER.error("Cloud login failed: %s", e)
-                    errors["base"] = "auth_failed"
-                else:
-                    self._cloud_token_file = temp_file
-                    if not raw_devices:
-                        errors["base"] = "no_devices"
-                    elif not coffee_devices:
-                        errors["base"] = "no_coffee_machine"
-                    else:
-                        self._cloud_devices = coffee_devices
-                        if len(coffee_devices) > 1:
-                            return await self.async_step_device_select()
-                        return await self._async_select_cloud_device(coffee_devices[0])
-
-        return self.async_show_form(
-            step_id="user",
-            data_schema=vol.Schema(
-                {
-                    vol.Optional(CONF_EMAIL): str,
-                    vol.Optional(CONF_PASSWORD): str,
-                    vol.Optional(CONF_MANUAL_SETUP, default=False): bool,
-                }
-            ),
-            errors=errors,
-        )
-
-    async def async_step_device_select(self, user_input=None):
-        """Let the user pick which discovered coffee machine to add (>1 found)."""
+    async def async_step_select(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
-            dsn = user_input[CONF_DSN]
-            device = next((d for d in self._cloud_devices if d["dsn"] == dsn), None)
-            if device is not None:
-                return await self._async_select_cloud_device(device)
-
+            return await self._create_from(user_input[CONF_DSN])
         options = {
-            d["dsn"]: f"{d.get('product_name') or d['dsn']} ({d['dsn']})"
-            for d in self._cloud_devices
+            dsn: f"{m.device.name or dsn} ({dsn})" for dsn, m in self._machines.items()
         }
         return self.async_show_form(
-            step_id="device_select",
-            data_schema=vol.Schema({vol.Required(CONF_DSN): vol.In(options)}),
+            step_id="select", data_schema=vol.Schema({vol.Required(CONF_DSN): vol.In(options)})
         )
 
-    async def _async_select_cloud_device(self, device: dict):
-        """Set the device's unique id, detect its model, and continue the flow."""
-        await self.async_set_unique_id(device["dsn"])
+    async def _create_from(self, dsn: str) -> ConfigFlowResult:
+        machine = self._machines[dsn]
+        await self.async_set_unique_id(dsn)
         self._abort_if_unique_id_configured()
-        self._cloud_selected_device = device
+        if not machine.lan_key or not machine.device.lan_ip:
+            return self.async_abort(reason="no_lan")
+        assert self._refresh_token
+        return self.async_create_entry(
+            title=machine.device.name or dsn, data=_entry_data(machine, self._refresh_token)
+        )
 
-        def _detect():
-            client = Client(self._cloud_token_file)
-            serial = client.get_serial_number(device["dsn"])
-            return detect_model_id(
-                serial,
-                {
-                    "model": device.get("oem_model"),
-                    "product_name": device.get("product_name"),
-                },
-                device.get("oem_model"),
-            )
+    # --- manual setup --------------------------------------------------------------
 
-        model_id = await self.hass.async_add_executor_job(_detect)
-        if model_id is None:
-            return await self.async_step_manual_map()
-        return await self._async_complete_cloud_entry(device, model_id)
-
-    async def async_step_manual_map(self, user_input=None):
-        """Fallback device-map picker when automatic detection is inconclusive.
-
-        Shown only when :func:`detect_model_id` returns ``None`` — the DSN,
-        friendly name, and any LAN details are already known from the cloud
-        discovery step and are not re-requested from the user.
-        """
-        device = self._cloud_selected_device or {}
+    async def async_step_manual(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
         if user_input is not None:
-            return await self._async_complete_cloud_entry(
-                device, user_input[CONF_DEVICE_MAP]
-            )
-
-        maps = await self.hass.async_add_executor_job(get_available_maps, self.hass)
-        return self.async_show_form(
-            step_id="manual_map",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_DEVICE_MAP): vol.In(maps) if maps else str,
-                }
-            ),
-            description_placeholders={
-                "dsn": device.get("dsn", ""),
-                "device_name": device.get("product_name") or device.get("dsn", ""),
-            },
-        )
-
-    async def _async_complete_cloud_entry(self, device: dict, device_map_id: str):
-        """Fetch LAN details and create the entry as local (if supported and
-        available) or cloud (fallback), per FR-006/FR-007/FR-008.
-        """
-        dsn = device["dsn"]
-        device_name = device.get("product_name") or dsn
-
-        def _fetch_lan():
-            client = Client(self._cloud_token_file)
-            return client.get_lan_config(dsn)
-
-        map_data = await self.hass.async_add_executor_job(
-            get_map_data, self.hass, device_map_id
-        )
-        support = map_data.get("support", {})
-
-        lan = {"lan_enabled": False}
-        if support.get("local"):
-            lan = await self.hass.async_add_executor_job(_fetch_lan)
-
-        local_available = (
-            lan.get("lan_enabled")
-            and lan.get("lan_ip")
-            and lan.get("lanip_key")
-            and support.get("local")
-        )
-
-        statistics_supported = (
-            str(device_map_id).upper().removesuffix(".JSON") == "ECAM610"
-        )
-
-        if local_available:
-            data = {
-                CONF_CONNECTION_TYPE: CONNECTION_LOCAL,
-                DEVICE_NAME: device_name,
-                CONF_DSN: dsn,
-                CONF_DEVICE_MAP: device_map_id,
-                CONF_ADDON_URL: self._addon_url,
-                CONF_LAN_KEY: lan["lanip_key"],
-                CONF_DEVICE_IP: lan["lan_ip"],
-            }
-
-            # ECAM610 uses local control but retains the authenticated cloud
-            # token for live native A2 statistics.
-            if statistics_supported:
-                token_dir = self.hass.config.path(TOKEN_DIR)
-                os.makedirs(token_dir, exist_ok=True)
-                final_token_path = os.path.join(token_dir, f"{dsn}.json")
-
-                if self._cloud_token_file and os.path.exists(self._cloud_token_file):
-                    os.replace(self._cloud_token_file, final_token_path)
-
-                data[CONF_TOKEN_FILE] = final_token_path
-            elif self._cloud_token_file and os.path.exists(self._cloud_token_file):
-                os.remove(self._cloud_token_file)
-
-        else:
-            token_dir = self.hass.config.path(TOKEN_DIR)
-            os.makedirs(token_dir, exist_ok=True)
-            final_token_path = os.path.join(token_dir, f"{dsn}.json")
-
-            if self._cloud_token_file and os.path.exists(self._cloud_token_file):
-                os.replace(self._cloud_token_file, final_token_path)
-
-            data = {
-                CONF_CONNECTION_TYPE: CONNECTION_CLOUD,
-                DEVICE_NAME: device_name,
-                CONF_DSN: dsn,
-                CONF_DEVICE_MAP: device_map_id,
-                CONF_TOKEN_FILE: final_token_path,
-            }
-
-        return self.async_create_entry(title=device_name, data=data)
-
-    async def async_step_manual(self, user_input=None):
-        """Handle the advanced/manual setup step (device-map picker first).
-
-        This is today's original first step, preserved verbatim for users
-        without cloud account access or who prefer not to use cloud-assisted
-        onboarding (FR-010).
-        """
-        errors = {}
-        if user_input is not None:
-            self._selected_map = user_input[CONF_DEVICE_MAP]
-
-            # Check support
-            map_data = await self.hass.async_add_executor_job(
-                get_map_data, self.hass, self._selected_map
-            )
-            support = map_data.get("support", {})
-            local_support = support.get("local", False)
-            cloud_support = support.get("cloud", False)
-
-            if local_support and cloud_support:
-                return self.async_show_menu(
-                    step_id="choose_connection",
-                    menu_options={
-                        "local": "Local Network (Add-on) [recommended]",
-                        "cloud_auth": "Cloud (Ayla Networks)",
-                    },
-                )
-            elif local_support:
-                return await self.async_step_local()
-            elif cloud_support:
-                return await self.async_step_cloud_auth()
+            ip = user_input[CONF_DEVICE_IP].strip()
+            try:
+                module = await probe_module(async_get_clientsession(self.hass), ip)
+            except (aiohttp.ClientError, TimeoutError):
+                errors["base"] = "cannot_connect"
             else:
-                errors["base"] = "no_support"
-
-        maps = await self.hass.async_add_executor_job(get_available_maps, self.hass)
-        return self.async_show_form(
-            step_id="manual",
-            data_schema=vol.Schema({vol.Required(CONF_DEVICE_MAP): vol.In(maps)}),
-            errors=errors,
-        )
-
-    async def async_step_choose_connection(self, user_input=None):
-        """Handle the connection choice step."""
-        if user_input == "local":
-            return await self.async_step_local()
-        elif user_input == "cloud_auth":
-            return await self.async_step_cloud_auth()
-        return self.async_abort(reason="unknown_choice")
-
-    async def async_step_local(self, user_input=None):
-        """Handle the local connection step.
-
-        Args:
-            user_input: Input data from the user.
-
-        Returns:
-            The next step in the flow.
-        """
-        errors = {}
-        if user_input is not None:
-            self._addon_url = user_input[CONF_ADDON_URL]
-            try:
-                import requests
-
-                def _check():
-                    # Check health endpoint of the addon
-                    return requests.get(
-                        f"{self._addon_url.rstrip('/')}/health", timeout=5
-                    )
-
-                resp = await self.hass.async_add_executor_job(_check)
-                if resp.status_code == 200:
-                    return await self.async_step_device()
-            except Exception:
-                pass
-
-            errors["base"] = "cannot_connect"
-
-        return self.async_show_form(
-            step_id="local",
-            data_schema=vol.Schema(
-                {vol.Required(CONF_ADDON_URL, default=DEFAULT_ADDON_URL): str}
-            ),
-            errors=errors,
-        )
-
-    async def async_step_device(self, user_input=None):
-        """Handle the local device configuration step.
-
-        Args:
-            user_input: Input data from the user
-        Returns:
-            The created config entry or the form to show.
-        """
-        errors = {}
-        maps = await self.hass.async_add_executor_job(get_available_maps, self.hass)
-
-        if user_input:
-            user_input[CONF_ADDON_URL] = self._addon_url
-            user_input[CONF_CONNECTION_TYPE] = CONNECTION_LOCAL
-
-            if self._selected_map and CONF_DEVICE_MAP not in user_input:
-                user_input[CONF_DEVICE_MAP] = self._selected_map
-
-            await self.async_set_unique_id(user_input[CONF_DSN])
-            self._abort_if_unique_id_configured()
-
-            return self.async_create_entry(
-                title=f"{user_input[DEVICE_NAME]}", data=user_input
-            )
-
-        schema = {
-            vol.Required(DEVICE_NAME): str,
-            vol.Required(CONF_DSN): str,
-            vol.Required(CONF_LAN_KEY): str,
-            vol.Required(CONF_DEVICE_IP): str,
-        }
-        if not self._selected_map:
-            schema[vol.Required(CONF_DEVICE_MAP)] = vol.In(maps) if maps else str
-
-        return self.async_show_form(
-            step_id="device",
-            data_schema=vol.Schema(schema),
-            errors=errors,
-        )
-
-    async def async_step_cloud_auth(self, user_input=None):
-        """Handle the cloud authentication step.
-
-        Args:
-            user_input: Input data from the user.
-
-        Returns:
-            The next step in the flow.
-        """
-        errors = {}
-        if user_input is not None:
-            refresh_token = user_input[CONF_REFRESH_TOKEN]
-
-            # Ensure token directory exists
-            token_dir = self.hass.config.path(TOKEN_DIR)
-            os.makedirs(token_dir, exist_ok=True)
-
-            # Create a temporary token file
-            temp_file = os.path.join(token_dir, "temp_token.json")
-
-            try:
-
-                def _auth_and_fetch():
-                    with open(temp_file, "w") as f:
-                        json.dump({"refresh_token": refresh_token}, f)
-
-                    client = Client(temp_file)
-                    return client.get_devices()
-
-                self._discovered_devices = await self.hass.async_add_executor_job(
-                    _auth_and_fetch
-                )
-                self._temp_token_file = temp_file
-
-                if not self._discovered_devices:
-                    errors["base"] = "no_devices"
+                if not module.lan_ready or not module.dsn:
+                    errors["base"] = "module_not_ready"
                 else:
-                    return await self.async_step_cloud_device()
-
-            except Exception as e:
-                _LOGGER.error("Authentication failed: %s", e)
-                errors["base"] = "auth_failed"
-                # Clean up if failed
-                if os.path.exists(temp_file):
-                    os.remove(temp_file)
-
-        return self.async_show_form(
-            step_id="cloud_auth",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_REFRESH_TOKEN): str,
-                }
-            ),
-            errors=errors,
-        )
-
-    async def async_step_cloud_device(self, user_input=None):
-        """Handle the cloud device selection step.
-
-        Args:
-            user_input: Input data from the user.
-
-        Returns:
-            The created config entry or the form to show.
-        """
-        errors = {}
-        maps = await self.hass.async_add_executor_job(get_available_maps, self.hass)
-
-        if user_input:
-            dsn = user_input[CONF_DSN]
-
-            # Check if already configured
-            await self.async_set_unique_id(dsn)
-            self._abort_if_unique_id_configured()
-
-            # Move temp token file to permanent location
-            token_dir = self.hass.config.path(TOKEN_DIR)
-            final_token_path = os.path.join(token_dir, f"{dsn}.json")
-
-            if self._temp_token_file and os.path.exists(self._temp_token_file):
-                os.rename(self._temp_token_file, final_token_path)
-
-            if self._selected_map and CONF_DEVICE_MAP not in user_input:
-                user_input[CONF_DEVICE_MAP] = self._selected_map
-
-            data = {
-                CONF_CONNECTION_TYPE: CONNECTION_CLOUD,
-                DEVICE_NAME: dsn,  # Default name, user can change later in HA entity settings
-                CONF_DSN: dsn,
-                CONF_DEVICE_MAP: user_input[CONF_DEVICE_MAP],
-                CONF_TOKEN_FILE: final_token_path,
+                    await self.async_set_unique_id(module.dsn)
+                    self._abort_if_unique_id_configured(updates={CONF_DEVICE_IP: ip})
+                    return self.async_create_entry(
+                        title=user_input.get("name") or module.dsn,
+                        data={
+                            CONF_DSN: module.dsn,
+                            CONF_DEVICE_IP: ip,
+                            CONF_LAN_KEY: user_input[CONF_LAN_KEY].strip(),
+                            CONF_PROFILE: user_input[CONF_PROFILE],
+                        },
+                    )
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_DEVICE_IP): str,
+                vol.Required(CONF_LAN_KEY): _PASSWORD,
+                vol.Required(CONF_PROFILE, default=DEFAULT_PROFILE): _profile_selector(),
+                vol.Optional("name"): str,
             }
-
-            return self.async_create_entry(title=dsn, data=data)
-
-        schema = {
-            vol.Required(DEVICE_NAME): str,
-            vol.Required(CONF_DSN): vol.In(self._discovered_devices),
-        }
-        if not self._selected_map:
-            schema[vol.Required(CONF_DEVICE_MAP)] = vol.In(maps) if maps else str
-
-        return self.async_show_form(
-            step_id="cloud_device",
-            data_schema=vol.Schema(schema),
-            errors=errors,
         )
+        return self.async_show_form(step_id="manual", data_schema=schema, errors=errors)
+
+    # --- reauth (also completes migrated cloud-only entries) ----------------------
+
+    async def async_step_reauth(self, entry_data: dict[str, Any]) -> ConfigFlowResult:
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
+        entry = self._get_reauth_entry()
+        if user_input is not None:
+            errors = await self._login(user_input[CONF_EMAIL], user_input[CONF_PASSWORD])
+            if not errors:
+                machine = self._machines.get(entry.data[CONF_DSN])
+                if machine is None:
+                    errors["base"] = "machine_not_on_account"
+                elif not machine.lan_key or not machine.device.lan_ip:
+                    return self.async_abort(reason="no_lan")
+                else:
+                    assert self._refresh_token
+                    return self.async_update_reload_and_abort(
+                        entry, data={**entry.data, **_entry_data(machine, self._refresh_token)}
+                    )
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=REAUTH_SCHEMA,
+            errors=errors,
+            description_placeholders={"name": entry.title},
+        )
+
+    # --- reconfigure: new IP address ---------------------------------------------
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        entry = self._get_reconfigure_entry()
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            ip = user_input[CONF_DEVICE_IP].strip()
+            try:
+                module = await probe_module(async_get_clientsession(self.hass), ip)
+            except (aiohttp.ClientError, TimeoutError):
+                errors["base"] = "cannot_connect"
+            else:
+                if module.dsn != entry.data[CONF_DSN]:
+                    errors["base"] = "wrong_machine"
+                else:
+                    return self.async_update_reload_and_abort(
+                        entry, data={**entry.data, CONF_DEVICE_IP: ip}
+                    )
+        schema = vol.Schema(
+            {vol.Required(CONF_DEVICE_IP, default=entry.data.get(CONF_DEVICE_IP) or ""): str}
+        )
+        return self.async_show_form(step_id="reconfigure", data_schema=schema, errors=errors)
+
+
+class CremalinkOptionsFlow(OptionsFlowWithReload):
+    """Callback server port and the address announced to the machine.
+
+    Reloads the entry only when options change; data updates (e.g. a rotated
+    refresh token) never reload it.
+    """
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        if user_input is not None:
+            return self.async_create_entry(data=user_input)
+        opts = self.config_entry.options
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_LAN_PORT, default=opts.get(CONF_LAN_PORT, DEFAULT_LAN_PORT)
+                ): vol.All(int, vol.Range(min=1024, max=65535)),
+                vol.Optional(
+                    CONF_ADVERTISE_IP, description={"suggested_value": opts.get(CONF_ADVERTISE_IP)}
+                ): str,
+            }
+        )
+        return self.async_show_form(step_id="init", data_schema=schema)

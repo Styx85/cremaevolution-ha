@@ -1,8 +1,10 @@
 """Switch platform for the Cremalink integration."""
+from aioecam.exceptions import EcamError
 from homeassistant.components.switch import SwitchEntity
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from .const import DOMAIN, CONF_CONNECTION_TYPE, CONNECTION_CLOUD
+from .const import DOMAIN, MANUFACTURER
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
@@ -13,9 +15,9 @@ async def async_setup_entry(hass, entry, async_add_entities):
         entry: The config entry.
         async_add_entities: Function to add entities.
     """
-    data = hass.data[DOMAIN][entry.entry_id]
-    coordinator = data["coordinator"]
-    device = data["device"]
+    data = entry.runtime_data
+    coordinator = data.coordinator
+    device = data.device
     async_add_entities([CremalinkPowerSwitch(coordinator, device, entry)])
 
 
@@ -36,11 +38,10 @@ class CremalinkPowerSwitch(CoordinatorEntity, SwitchEntity):
         self._attr_translation_key = "power"
         self._attr_unique_id = f"{entry.entry_id}_power"
         self._attr_icon = "mdi:power"
-        self._connection_type = entry.data.get(CONF_CONNECTION_TYPE)
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             name=entry.title,
-            manufacturer="cremalink",
+            manufacturer=MANUFACTURER,
         )
 
     @property
@@ -59,11 +60,17 @@ class CremalinkPowerSwitch(CoordinatorEntity, SwitchEntity):
         return super().available
 
     async def async_turn_on(self, **kwargs):
-        """Turn the switch on."""
-        await self.hass.async_add_executor_job(self.device.do, "wakeup")
+        """Wake the machine; returns once the machine confirms it is waking up."""
+        try:
+            await self.device.power_on()
+        except EcamError as err:
+            raise HomeAssistantError(f"Could not switch the machine on: {err}") from err
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs):
-        """Turn the switch off."""
-        await self.hass.async_add_executor_job(self.device.do, "standby")
+        """Put the machine into standby; returns once it confirms."""
+        try:
+            await self.device.power_off()
+        except EcamError as err:
+            raise HomeAssistantError(f"Could not switch the machine off: {err}") from err
         await self.coordinator.async_request_refresh()
