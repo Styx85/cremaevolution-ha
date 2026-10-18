@@ -1,2 +1,2 @@
 pytest-homeassistant-custom-component
-aioecam @ git+https://github.com/Styx85/aioecam@1757e8f01d4a0997511aa080e27cbc5f16369135
+aioecam@git+https://github.com/Styx85/aioecam@1757e8f01d4a0997511aa080e27cbc5f16369135
