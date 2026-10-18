@@ -33,9 +33,11 @@ machine:
 | After a restart of the Wi-Fi module without internet, it refuses LAN mode until it has reached the cloud again | Silent endless retries | Detected and reported clearly |
 | An extra server process is needed | Add-on, or a hand-built container on Docker installs | Runs inside Home Assistant, no add-on |
 
-The architecture and milestones are documented in
-[docs/aioecam-plan.md](docs/aioecam-plan.md), and the probe tools used for the
-measurements are in [tools/](tools/).
+All protocol findings (LAN registration, session crypto, monitor behaviour,
+module states, A2 over LAN) are written up for reuse in
+**[docs/ecam-lan-protocol.md](docs/ecam-lan-protocol.md)**. The architecture
+and milestones are in [docs/aioecam-plan.md](docs/aioecam-plan.md), and the
+probe tools used for the measurements are in [tools/](tools/).
 
 ### Rewrite status
 
@@ -43,8 +45,8 @@ measurements are in [tools/](tools/).
 |---|---|
 | Protocol codec, monitor parsing, model profiles | ✅ done |
 | Local LAN transport (verified live on an ECAM610.75) | ✅ done |
-| Device API with confirmed commands, A2 statistics | ⏭️ next |
-| Cloud onboarding and wake fallback | ⏳ planned |
+| Device API with confirmed commands, A2 statistics (verified live: on, espresso, off, full A2 table) | ✅ done |
+| Cloud onboarding and wake fallback | ⏭️ next |
 | Home Assistant integration without add-on, migration | ⏳ planned |
 | 24 h soak test and release | ⏳ planned |
 
