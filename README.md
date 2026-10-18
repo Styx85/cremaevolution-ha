@@ -2,6 +2,9 @@
 
 **Local-first Home Assistant integration for De'Longhi Coffee Link machines (PrimaDonna Soul, Eletta Explore, …).**
 
+This is the fork maintained by **[Styx85](https://github.com/Styx85)**.
+The original authors are acknowledged in [Credits](#-credits).
+
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?category=integration&repository=cremalink-ha&owner=Styx85)
 [![License](https://img.shields.io/github/license/Styx85/cremalink-ha?style=for-the-badge&color=success)](LICENSE)
 
@@ -78,8 +81,11 @@ unidentified raw statistic rather than being given a guessed meaning.
 ## Installation
 
 1. **HACS:** click the HACS badge above, or add this repository to HACS as a
-   custom repository. Search for "Cremalink", install it and restart Home
-   Assistant.
+   custom repository: `https://github.com/Styx85/cremalink-ha` (category:
+   Integration). Check that the repository is `Styx85/cremalink-ha`, install
+   it and restart Home Assistant. If HACS still lists the original author
+   after switching forks, refresh its repository information; `codeowners`
+   in this fork identifies `@Styx85`.
 2. **Manual:** copy `custom_components/cremalink_ha` to your
    `config/custom_components/` directory and restart Home Assistant.
 
