@@ -71,6 +71,7 @@ def _profile_selector() -> SelectSelector:
 
 def _entry_data(machine: OnboardedMachine, refresh_token: str) -> dict[str, Any]:
     return {
+        "oem_model": machine.device.oem_model,
         CONF_DSN: machine.device.dsn,
         CONF_DEVICE_IP: machine.device.lan_ip,
         CONF_LAN_KEY: machine.lan_key,

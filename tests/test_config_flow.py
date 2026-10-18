@@ -47,7 +47,7 @@ async def test_login_single_machine_creates_entry(hass: HomeAssistant) -> None:
     assert result["title"] == "Soul"
     assert result["data"] == {"dsn": DSN, "device_ip": "192.168.1.50", "lan_key": LAN_KEY,
                               "key_id": 58915, "profile": "ecam61x",
-                              "refresh_token": "refresh-1"}  # fmt: skip
+                              "refresh_token": "refresh-1", "oem_model": "DL-millcore"}  # fmt: skip
     assert "password" not in result["data"] and "email" not in result["data"]
     assert result["result"].unique_id == DSN
 
