@@ -63,6 +63,9 @@ async def async_setup_entry(hass, entry, async_add_entities):
             )
         )
 
+    if data.recipe_reader is not None:
+        entities.append(CremalinkRecipeReadButton(coordinator, data.recipe_reader, entry))
+
     async_add_entities(entities)
 
 
@@ -152,3 +155,34 @@ class CremalinkStatisticsRefreshButton(CoordinatorEntity, ButtonEntity):
     async def async_press(self):
         """Run one complete A2 statistics refresh."""
         await self.coordinator.async_force_refresh()
+
+
+class CremalinkRecipeReadButton(CoordinatorEntity, ButtonEntity):
+    """Read catalogue properties once; disabled until explicitly enabled."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
+    _attr_has_entity_name = True
+    _attr_translation_key = "read_recipe_data"
+    _attr_icon = "mdi:book-search-outline"
+
+    def __init__(self, coordinator, reader, entry):
+        super().__init__(coordinator)
+        self.reader = reader
+        self.entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_recipe_read"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)}, name=entry.title, manufacturer=MANUFACTURER,
+        )
+
+    @property
+    def available(self):
+        return (self.reader.device.available and not self.reader.device.is_busy()
+                and not self.reader.running)
+
+    async def async_press(self):
+        try:
+            if not self.reader.start(self.hass, self.entry):
+                raise HomeAssistantError("Recipe read already running")
+        except ValueError as err:
+            raise HomeAssistantError(str(err)) from err

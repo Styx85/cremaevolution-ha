@@ -247,6 +247,9 @@
       },
       "stop_brewing": {
         "name": "Stop"
+      },
+      "read_recipe_data": {
+        "name": "Read recipe data once"
       }
     },
     "binary_sensor": {

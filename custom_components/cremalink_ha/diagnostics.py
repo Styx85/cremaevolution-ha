@@ -62,6 +62,7 @@ async def async_get_config_entry_diagnostics(
             "semantics": "receipt/query success does not prove new machine state; standby may cache",
         },
         "recipe_catalog": device.catalog.snapshot(),
+        "recipe_read": None if runtime.recipe_reader is None else runtime.recipe_reader.snapshot(),
         "entry_data": async_redact_data(dict(entry.data), REDACT_KEYS),
         "entry_options": async_redact_data(dict(entry.options), REDACT_KEYS),
         "profile": runtime.device.profile.family,

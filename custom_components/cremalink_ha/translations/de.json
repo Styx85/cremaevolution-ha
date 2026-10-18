@@ -188,6 +188,9 @@
       },
       "stop_brewing": {
         "name": "Zubereitung stoppen"
+      },
+      "read_recipe_data": {
+        "name": "Rezeptdaten einmalig lesen"
       }
     },
     "binary_sensor": {
