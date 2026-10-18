@@ -16,7 +16,7 @@ from homeassistant.const import (
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import DOMAIN, MANUFACTURER
 
 
 # Fast machine-monitor sensors.
@@ -238,10 +238,10 @@ STATISTICS_SENSORS = [
 async def async_setup_entry(hass, entry, async_add_entities):
     """Set up Cremalink sensors."""
 
-    data = hass.data[DOMAIN][entry.entry_id]
+    data = entry.runtime_data
 
-    coordinator = data["coordinator"]
-    statistics_coordinator = data.get("statistics_coordinator")
+    coordinator = data.coordinator
+    statistics_coordinator = data.statistics_coordinator
 
     entities = []
 
@@ -317,7 +317,7 @@ class CremalinkSensor(CoordinatorEntity, SensorEntity):
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             name=entry.title,
-            manufacturer="cremalink",
+            manufacturer=MANUFACTURER,
         )
 
     @property
@@ -361,7 +361,7 @@ class CremalinkMonitorDiagnosticsSensor(
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             name=entry.title,
-            manufacturer="cremalink",
+            manufacturer=MANUFACTURER,
         )
 
     @property
@@ -537,7 +537,7 @@ class CremalinkStatisticsSensor(
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             name=entry.title,
-            manufacturer="De'Longhi",
+            manufacturer=MANUFACTURER,
         )
 
     @property
@@ -601,7 +601,7 @@ class CremalinkStatisticsDiagnosticsSensor(
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             name=entry.title,
-            manufacturer="De'Longhi",
+            manufacturer=MANUFACTURER,
         )
 
     @property

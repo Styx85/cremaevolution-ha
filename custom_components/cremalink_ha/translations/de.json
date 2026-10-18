@@ -218,5 +218,76 @@
         "name": "Ein/Aus"
       }
     }
+  },
+  "config": {
+    "step": {
+      "user": {
+        "title": "Bei De'Longhi Coffee Link anmelden",
+        "description": "Einmal anmelden, um die Maschine zu finden und ihren lokalen Schlüssel zu holen. Danach läuft die Steuerung über dein lokales Netz; gespeichert wird nur ein Refresh-Token, nie das Passwort. Wähle \"Manuelle Einrichtung\", wenn du IP-Adresse und LAN-Key schon kennst.",
+        "data": {
+          "email": "E-Mail",
+          "password": "Passwort",
+          "manual_setup": "Manuelle Einrichtung (IP-Adresse und LAN-Key)"
+        }
+      },
+      "select": {
+        "title": "Maschine wählen",
+        "description": "In deinem Konto ist mehr als eine Kaffeemaschine.",
+        "data": {
+          "dsn": "Maschine"
+        }
+      },
+      "manual": {
+        "title": "Manuelle Einrichtung",
+        "description": "Die Maschine muss im Netz erreichbar sein und seit ihrem letzten Neustart mindestens einmal mit der De'Longhi-Cloud verbunden gewesen sein.",
+        "data": {
+          "device_ip": "IP-Adresse der Maschine",
+          "lan_key": "LAN-Key",
+          "profile": "Maschinenfamilie",
+          "name": "Name (optional)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Erneut anmelden",
+        "description": "Melde dich bei Coffee Link an, um den Zugang für {name} zu erneuern. Bei Einträgen, die von der Cloud-Verbindung migriert wurden, wird dabei auch der lokale Schlüssel geholt.",
+        "data": {
+          "email": "E-Mail",
+          "password": "Passwort"
+        }
+      },
+      "reconfigure": {
+        "title": "IP-Adresse ändern",
+        "data": {
+          "device_ip": "IP-Adresse der Maschine"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "E-Mail oder Passwort ist falsch.",
+      "cannot_connect": "Dienst oder Maschine nicht erreichbar.",
+      "missing_credentials": "E-Mail und Passwort eingeben oder \"Manuelle Einrichtung\" wählen.",
+      "no_machines": "In diesem Konto wurde keine Kaffeemaschine gefunden.",
+      "module_not_ready": "Das WLAN-Modul der Maschine lehnt lokale Verbindungen gerade ab. Nach einem Neustart muss es einmal die De'Longhi-Cloud erreichen; prüfe den Internetzugang und versuche es in ein paar Minuten erneut.",
+      "machine_not_on_account": "Diese Maschine gehört nicht zum angemeldeten Konto.",
+      "wrong_machine": "Unter dieser Adresse antwortet eine andere Maschine."
+    },
+    "abort": {
+      "already_configured": "Diese Maschine ist bereits eingerichtet.",
+      "no_lan": "Die Cloud hat keinen lokalen Schlüssel für diese Maschine (lokale Verbindung deaktiviert). Aktiviere die lokale Verbindung in der Coffee-Link-App oder nutze die manuelle Einrichtung.",
+      "reauth_successful": "Erneute Anmeldung erfolgreich.",
+      "reconfigure_successful": "Die IP-Adresse wurde aktualisiert."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Lokale Verbindung",
+        "description": "Die Maschine verbindet sich über diesen Port mit Home Assistant. Die angekündigte Adresse nur ändern, wenn Home Assistant für die Maschine unter einer anderen IP erreichbar ist (z. B. Docker oder VLANs).",
+        "data": {
+          "lan_port": "Port für die Rückrufe der Maschine",
+          "advertise_ip": "Der Maschine angekündigte Adresse (optional)"
+        }
+      }
+    }
   }
 }

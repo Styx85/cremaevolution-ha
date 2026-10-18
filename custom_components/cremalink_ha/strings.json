@@ -2,80 +2,60 @@
   "config": {
     "step": {
       "user": {
-        "title": "Sign in to your Cremalink cloud account",
-        "description": "Enter your cloud account email and password to automatically discover and set up your coffee machine. Check \"Advanced setup\" to configure a device manually instead.",
+        "title": "Sign in to De'Longhi Coffee Link",
+        "description": "Sign in once to find your machine and fetch its local key. Afterwards the machine is controlled over your local network; only a refresh token is stored, never the password. Tick \"Manual setup\" if you already know the machine's IP address and LAN key.",
         "data": {
           "email": "Email",
           "password": "Password",
-          "manual_setup": "Advanced setup (configure manually instead)"
+          "manual_setup": "Manual setup (IP address and LAN key)"
         }
       },
-      "device_select": {
-        "title": "Select Device",
-        "description": "Your cloud account has more than one coffee machine. Choose which one to add.",
+      "select": {
+        "title": "Choose a machine",
+        "description": "Your account has more than one coffee machine.",
         "data": {
-          "dsn": "Device"
-        }
-      },
-      "manual_map": {
-        "title": "Select Device Model",
-        "description": "We could not automatically identify the model for {device_name} ({dsn}). Please select it manually.",
-        "data": {
-          "device_map": "Device Model"
+          "dsn": "Machine"
         }
       },
       "manual": {
-        "title": "Select Connection Method",
-        "description": "Choose how you want to connect to your Cremalink device.",
-        "menu_options": {
-          "local": "Local Network (Add-on)",
-          "cloud": "Cloud (Ayla Networks)"
+        "title": "Manual setup",
+        "description": "The machine must be reachable on your network and must have been connected to the De'Longhi cloud at least once since its last restart.",
+        "data": {
+          "device_ip": "IP address of the machine",
+          "lan_key": "LAN key",
+          "profile": "Machine family",
+          "name": "Name (optional)"
         }
       },
-      "local": {
-        "title": "Connect with server",
-        "description": "Please enter the URL of your Cremalink Add-on.",
+      "reauth_confirm": {
+        "title": "Sign in again",
+        "description": "Sign in to Coffee Link to refresh the access for {name}. This also fetches the local key for entries that were migrated from the cloud connection.",
         "data": {
-          "addon_url": "Add-on URL (e.g. http://localhost:10280)"
+          "email": "Email",
+          "password": "Password"
         }
       },
-      "cloud_auth": {
-        "title": "Cloud Authentication",
-        "description": "Enter your refresh token to authenticate with the cloud service.",
+      "reconfigure": {
+        "title": "Change the IP address",
         "data": {
-          "refresh_token": "Refresh Token"
-        }
-      },
-      "cloud_device": {
-        "title": "Select Device",
-        "description": "Select the device you wish to add.",
-        "data": {
-          "dsn": "Device",
-          "device_map": "Device Map"
-        }
-      },
-      "device": {
-        "title": "Configure device",
-        "description": "Enter the credentials of your coffee machine.",
-        "data": {
-          "device_name": "Name",
-          "dsn": "Device Serial Number (DSN)",
-          "lan_key": "LAN Key",
-          "device_ip": "IP-Address of coffee machine",
-          "device_map": "Device Map"
+          "device_ip": "IP address of the machine"
         }
       }
     },
     "error": {
-      "cannot_connect": "Could not connect to server. Is the URL correct and the server running?",
-      "auth_failed": "Authentication failed. Please check your credentials.",
-      "missing_credentials": "Please enter both email and password, or check Advanced setup.",
-      "no_devices": "No devices found on this account.",
-      "no_coffee_machine": "This account has devices, but none of them are recognized as a coffee machine.",
-      "unknown": "Unknown error occurred"
+      "invalid_auth": "Email or password is wrong.",
+      "cannot_connect": "Could not reach the service or the machine.",
+      "missing_credentials": "Enter email and password, or tick Manual setup.",
+      "no_machines": "No coffee machine was found on this account.",
+      "module_not_ready": "The machine's Wi-Fi module currently refuses local connections. It needs to reach the De'Longhi cloud once after a restart; check its internet access and try again in a few minutes.",
+      "machine_not_on_account": "This machine is not on the account you signed in with.",
+      "wrong_machine": "A different machine answers at this address."
     },
     "abort": {
-      "already_configured": "Device is already configured."
+      "already_configured": "This machine is already configured.",
+      "no_lan": "The cloud has no local key for this machine (local connection disabled). Enable the local connection in the Coffee Link app or use manual setup.",
+      "reauth_successful": "Signed in again successfully.",
+      "reconfigure_successful": "The IP address was updated."
     }
   },
   "entity": {
@@ -295,6 +275,18 @@
     "switch": {
       "power": {
         "name": "Power"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Local connection",
+        "description": "The machine connects to Home Assistant on this port. Change the announced address only if Home Assistant is reachable for the machine under a different IP (e.g. Docker or VLANs).",
+        "data": {
+          "lan_port": "Port for the machine's callbacks",
+          "advertise_ip": "Address announced to the machine (optional)"
+        }
       }
     }
   }

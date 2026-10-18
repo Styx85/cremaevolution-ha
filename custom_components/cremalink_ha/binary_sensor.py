@@ -1,9 +1,10 @@
 """Binary sensor platform for the Cremalink integration."""
 from homeassistant.components.binary_sensor import BinarySensorEntity, BinarySensorDeviceClass
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, CONF_CONNECTION_TYPE, CONNECTION_CLOUD
+from .const import DOMAIN, MANUFACTURER
 
 BINARY_SENSORS = [
     ("is_busy", "Busy", None, BinarySensorDeviceClass.RUNNING),
@@ -23,12 +24,25 @@ async def async_setup_entry(hass, entry, async_add_entities):
         entry: The config entry.
         async_add_entities: Function to add entities.
     """
-    data = hass.data[DOMAIN][entry.entry_id]
-    coordinator = data["coordinator"]
+    data = entry.runtime_data
+    coordinator = data.coordinator
 
-    entities = []
-    for key, name, icon, dev_class in BINARY_SENSORS:
-        entities.append(CremalinkBinarySensor(coordinator, entry, key, name, icon, dev_class))
+    # Only flags this machine's profile can report; e.g. the PrimaDonna Soul has
+    # no reliable "water tank empty" bit, so that entity is not created.
+    supported = set(coordinator.data.available_fields)
+    # Remove entities of flags an earlier version created but this machine
+    # cannot report (they would stay "unavailable" forever).
+    registry = er.async_get(hass)
+    for key, *_ in BINARY_SENSORS:
+        if key not in supported and (
+            stale := registry.async_get_entity_id("binary_sensor", DOMAIN, f"{entry.entry_id}_{key}")
+        ):
+            registry.async_remove(stale)
+    entities = [
+        CremalinkBinarySensor(coordinator, entry, key, name, icon, dev_class)
+        for key, name, icon, dev_class in BINARY_SENSORS
+        if key in supported
+    ]
 
     async_add_entities(entities)
 
@@ -53,11 +67,10 @@ class CremalinkBinarySensor(CoordinatorEntity, BinarySensorEntity):
         self._attr_unique_id = f"{entry.entry_id}_{key}"
         self._attr_icon = icon
         self._attr_device_class = dev_class
-        self._connection_type = entry.data.get(CONF_CONNECTION_TYPE)
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             name=entry.title,
-            manufacturer="cremalink",
+            manufacturer=MANUFACTURER,
         )
 
     @property

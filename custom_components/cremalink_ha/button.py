@@ -1,9 +1,11 @@
 """Button platform for the Cremalink integration."""
+from aioecam.exceptions import EcamError
 from homeassistant.components.button import ButtonEntity
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.const import EntityCategory
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from .const import DOMAIN, CONF_CONNECTION_TYPE, CONNECTION_CLOUD
+from .const import DOMAIN, MANUFACTURER
 
 
 # Translation keys for commands currently known on supported ECAM profiles.
@@ -40,13 +42,12 @@ async def async_setup_entry(hass, entry, async_add_entities):
         entry: The config entry.
         async_add_entities: Function to add entities.
     """
-    data = hass.data[DOMAIN][entry.entry_id]
-    coordinator = data["coordinator"]
-    statistics_coordinator = data.get("statistics_coordinator")
-    device = data["device"]
+    data = entry.runtime_data
+    coordinator = data.coordinator
+    statistics_coordinator = data.statistics_coordinator
+    device = data.device
 
-    # Get available commands from the device
-    cmds = await hass.async_add_executor_job(device.get_commands)
+    cmds = sorted(device.profile.commands)
 
     entities = []
     for cmd in cmds:
@@ -96,11 +97,10 @@ class CremalinkButton(CoordinatorEntity, ButtonEntity):
 
         self._attr_unique_id = f"{entry.entry_id}_cmd_{cmd}"
         self._attr_icon = "mdi:coffee"
-        self._connection_type = entry.data.get(CONF_CONNECTION_TYPE)
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             name=entry.title,
-            manufacturer="cremalink",
+            manufacturer=MANUFACTURER,
         )
 
     @property
@@ -111,8 +111,14 @@ class CremalinkButton(CoordinatorEntity, ButtonEntity):
         return super().available and not self.coordinator.data.is_busy
 
     async def async_press(self):
-        """Handle the button press."""
-        await self.hass.async_add_executor_job(self.device.do, self._cmd)
+        """Start the beverage (confirmed by the machine) or stop the current one."""
+        try:
+            if self._cmd == "stop":
+                await self.device.stop()
+            else:
+                await self.device.brew(self._cmd)
+        except EcamError as err:
+            raise HomeAssistantError(f"{self._title}: {err}") from err
         await self.coordinator.async_request_refresh()
 
 
@@ -135,7 +141,7 @@ class CremalinkStatisticsRefreshButton(CoordinatorEntity, ButtonEntity):
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             name=entry.title,
-            manufacturer="cremalink",
+            manufacturer=MANUFACTURER,
         )
 
     @property

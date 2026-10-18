@@ -1,5 +1,2 @@
-pytest>=9.0.3
-pytest-cov>=7.1.0
-requests>=2.33.1
-voluptuous>=0.16.0
-cryptography>=48.0.0
+pytest-homeassistant-custom-component
+aioecam @ git+https://github.com/Styx85/aioecam@1757e8f01d4a0997511aa080e27cbc5f16369135

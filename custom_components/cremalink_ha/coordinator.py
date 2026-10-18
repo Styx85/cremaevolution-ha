@@ -1,98 +1,76 @@
-"""Data update coordinator for the Cremalink integration."""
+"""Machine state coordinator.
+
+The machine answers monitor reads but does not reliably push changes, so the
+coordinator polls: fast while the machine is awake, slow in standby (where the
+Wi-Fi module returns a frozen frame anyway). Pushes that do arrive are applied
+immediately.
+"""
+
+from __future__ import annotations
+
 import logging
 from datetime import timedelta
 
-from homeassistant.core import HomeAssistant
+from aioecam.device import EcamDevice
+from aioecam.ecam.monitor import MachineState
+from aioecam.exceptions import EcamError
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-
-from cremalink.domain.device import Device
+from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
+from .monitor_view import MonitorView
 
 _LOGGER = logging.getLogger(__name__)
 
-SCAN_INTERVAL_FAST = timedelta(seconds=1)
-SCAN_INTERVAL_SLOW = timedelta(seconds=30)
+SCAN_INTERVAL_AWAKE = timedelta(seconds=2)
+SCAN_INTERVAL_STANDBY = timedelta(seconds=30)
 
-# Keep the last known-good monitor snapshot across a very short run of
-# malformed/missed polls. This prevents normal entities from flapping to
-# unavailable on isolated transport/parser errors while still surfacing a
-# sustained device disconnect.
-MONITOR_TRANSIENT_FAILURE_LIMIT = 2
+# Keep the last good state across a short run of failed reads so entities do
+# not flap to unavailable; a sustained outage still surfaces.
+TRANSIENT_FAILURE_LIMIT = 2
 
-class CremalinkCoordinator(DataUpdateCoordinator):
-    """Class to manage fetching data from the Cremalink device."""
 
-    def __init__(self, hass: HomeAssistant, device: Device):
-        """Initialize the coordinator.
-
-        Args:
-            hass: The Home Assistant instance.
-            device: The Cremalink device instance.
-        """
-        super().__init__(
-            hass,
-            _LOGGER,
-            name=DOMAIN,
-            # Poll the device every second for updates
-            update_interval=SCAN_INTERVAL_FAST,
-        )
+class EcamCoordinator(DataUpdateCoordinator[MonitorView]):
+    def __init__(self, hass: HomeAssistant, device: EcamDevice) -> None:
+        super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=SCAN_INTERVAL_AWAKE)
         self.device = device
         self.monitor_consecutive_failures = 0
+        self._unsubscribe = device.subscribe(self._on_push)
 
-    async def _async_update_data(self):
-        """Fetch data from the device.
+    def _view(self, state: MachineState) -> MonitorView:
+        view = MonitorView(state=state, profile=self.device.profile, received_at=dt_util.utcnow())
+        self.update_interval = (
+            SCAN_INTERVAL_STANDBY if state.status == 0 else SCAN_INTERVAL_AWAKE
+        )
+        return view
 
-        Returns:
-            The monitoring data from the device.
-
-        Raises:
-            UpdateFailed: If there is an error communicating with the device.
-        """
-        try:
-            data = await self.hass.async_add_executor_job(
-                self.device.get_monitor
-            )
-
-            # Any genuinely successful monitor read ends a transient
-            # failure streak.
+    @callback
+    def _on_push(self, state: MachineState) -> None:
+        # Called for reads we triggered as well; only publish real changes.
+        if self.data is None or self.data.state != state:
             self.monitor_consecutive_failures = 0
+            self.async_set_updated_data(self._view(state))
 
-            if (
-                data
-                and hasattr(data, "parsed")
-                and isinstance(data.parsed, dict)
-            ):
-                status = data.parsed.get("status")
-
-                if status == 0:
-                    # Standby: poll slowly.
-                    self.update_interval = SCAN_INTERVAL_SLOW
-                elif status is not None:
-                    self.update_interval = SCAN_INTERVAL_FAST
-
-            return data
-
-        except Exception as err:
+    async def _async_update_data(self) -> MonitorView:
+        try:
+            state = await self.device.refresh(timeout=8)
+        except EcamError as err:
             self.monitor_consecutive_failures += 1
-
-            # A single malformed/truncated monitor frame should not make
-            # all normal entities unavailable. Retain a previously
-            # successful snapshot for a very short failure streak.
-            if (
-                self.data is not None
-                and self.monitor_consecutive_failures
-                <= MONITOR_TRANSIENT_FAILURE_LIMIT
-            ):
+            if self.data is not None and self.monitor_consecutive_failures <= TRANSIENT_FAILURE_LIMIT:
                 _LOGGER.debug(
-                    "Transient monitor failure %s/%s; retaining last "
-                    "known-good snapshot: %s",
+                    "transient monitor failure %s/%s, keeping last state: %s",
                     self.monitor_consecutive_failures,
-                    MONITOR_TRANSIENT_FAILURE_LIMIT,
+                    TRANSIENT_FAILURE_LIMIT,
                     err,
                 )
                 return self.data
+            raise UpdateFailed(f"no state from the machine: {err}") from err
+        self.monitor_consecutive_failures = 0
+        if self.data is not None and self.data.state == state:
+            return self.data
+        return self._view(state)
 
-            raise UpdateFailed(
-                f"Error communicating with device: {err}"
-            ) from err
+    async def async_shutdown(self) -> None:
+        self._unsubscribe()
+        await super().async_shutdown()

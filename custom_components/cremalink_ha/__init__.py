@@ -1,151 +1,184 @@
-"""The Cremalink Home Assistant integration."""
+"""Cremalink for Home Assistant: local-first control of De'Longhi Coffee Link machines.
+
+Talks to the machine directly over Ayla LAN mode through aioecam; the
+Cremalink Server add-on is no longer needed.
+"""
+
+from __future__ import annotations
+
+import json
 import logging
-from urllib.parse import urlparse
-from functools import partial
+from pathlib import Path
+from typing import Any
 
-
+from aioecam.cloud.api import AylaCloud
+from aioecam.cloud.region import load_region
+from aioecam.device import EcamDevice
+from aioecam.ecam.profile import load_profile
+from aioecam.exceptions import NotConnected
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from cremalink import create_local_device, device_map, Client
-
-from .const import *
-from .coordinator import CremalinkCoordinator
-from .statistics_coordinator import CremalinkStatisticsCoordinator
+from .const import (
+    DOMAIN,
+    CONF_ADVERTISE_IP,
+    CONF_DEVICE_IP,
+    CONF_DSN,
+    CONF_KEY_ID,
+    CONF_LAN_KEY,
+    CONF_LAN_PORT,
+    CONF_PROFILE,
+    CONF_REFRESH_TOKEN,
+    DEFAULT_LAN_PORT,
+    DEFAULT_PROFILE,
+    LEGACY_CONF_ADDON_URL,
+    LEGACY_CONF_CONNECTION_TYPE,
+    LEGACY_CONF_DEVICE_MAP,
+    LEGACY_CONF_TOKEN_FILE,
+    LEGACY_DEVICE_MAP_TO_PROFILE,
+)
+from .coordinator import EcamCoordinator
+from .runtime import RuntimeData, async_acquire_server, async_release_server
+from .statistics_coordinator import StatisticsCoordinator, statistics_supported
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = [Platform.SWITCH, Platform.BUTTON, Platform.SENSOR, Platform.BINARY_SENSOR]
 
-
-def supports_ecam610_statistics(map_selection: str) -> bool:
-    """Return whether the selected device map has verified ECAM610 A2 semantics."""
-    return str(map_selection).upper().removesuffix(".JSON") == "ECAM610"
+type CremalinkConfigEntry = ConfigEntry[RuntimeData]
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Cremalink from a config entry.
+async def async_setup_entry(hass: HomeAssistant, entry: CremalinkConfigEntry) -> bool:
+    data = entry.data
+    if not data.get(CONF_LAN_KEY):
+        # Migrated cloud-only entry: needs a login once to fetch the LAN key.
+        raise ConfigEntryAuthFailed("no LAN key stored; sign in again to fetch it")
 
-        Args:
-            hass: The Home Assistant instance.
-            entry: The config entry.
+    server = await async_acquire_server(
+        hass,
+        entry.entry_id,
+        entry.options.get(CONF_LAN_PORT, DEFAULT_LAN_PORT),
+        entry.options.get(CONF_ADVERTISE_IP) or None,
+    )
+    link = server.add_link(
+        device_ip=data[CONF_DEVICE_IP],
+        lan_key=data[CONF_LAN_KEY],
+        dsn=data[CONF_DSN],
+        key_id=data.get(CONF_KEY_ID),
+    )
 
-        Returns:
-            True if the setup was successful, False otherwise.
-    """
-    connection_type = entry.data.get(CONF_CONNECTION_TYPE, CONNECTION_LOCAL)
+    cloud = None
+    if data.get(CONF_REFRESH_TOKEN):
 
-    dsn = entry.data[CONF_DSN]
-
-    map_selection = entry.data[CONF_DEVICE_MAP]
-
-    try:
-        # Resolve the device map path
-        if map_selection.startswith("custom:"):
-            filename = map_selection.split(":", 1)[1]
-            map_path = hass.config.path(CUSTOM_MAP_DIR, filename)
-        else:
-            map_path = await hass.async_add_executor_job(device_map, map_selection)
-
-    except Exception as e:
-        _LOGGER.error("Could not resolve device map '%s': %s", map_selection, e)
-        return False
-
-    try:
-        if connection_type == CONNECTION_LOCAL:
-            addon_url = entry.data[CONF_ADDON_URL]
-            lan_key = entry.data[CONF_LAN_KEY]
-            device_ip = entry.data[CONF_DEVICE_IP]
-
-            # Parse the addon URL to get host and port
-            parsed_url = urlparse(addon_url)
-            server_host = parsed_url.hostname
-            server_port = parsed_url.port or 80
-
-            # Create the local device instance
-            device = await hass.async_add_executor_job(
-                partial(
-                    create_local_device,
-                    dsn=dsn,
-                    server_host=server_host,
-                    server_port=server_port,
-                    device_ip=device_ip,
-                    lan_key=lan_key,
-                    device_map_path=str(map_path)
-                )
+        def _store_token(token: str) -> None:
+            hass.config_entries.async_update_entry(
+                entry, data={**entry.data, CONF_REFRESH_TOKEN: token}
             )
-        elif connection_type == CONNECTION_CLOUD:
-            token_file = entry.data[CONF_TOKEN_FILE]
 
-            def _create_cloud_device():
-                client = Client(token_file)
-                return client.get_device(dsn, device_map_path=str(map_path))
+        cloud = AylaCloud(
+            async_get_clientsession(hass),
+            load_region("eu"),
+            data[CONF_REFRESH_TOKEN],
+            on_refresh_token=_store_token,
+        )
 
-            device = await hass.async_add_executor_job(_create_cloud_device)
+    device = EcamDevice(link, load_profile(data.get(CONF_PROFILE, DEFAULT_PROFILE)), cloud=cloud)
+    try:
+        await link.wait_active(15)
+    except NotConnected as err:
+        await server.remove_link(data[CONF_DEVICE_IP])
+        await async_release_server(hass, entry.entry_id)
+        hint = ""
+        if link.stats.last_registration_status == 404:
+            hint = " (the Wi-Fi module refuses LAN mode until it has reached the cloud)"
+        raise ConfigEntryNotReady(f"no LAN session with the machine{hint}") from err
 
-            if device is None:
-                raise ConfigEntryNotReady(f"Could not find cloud device with DSN {dsn}")
-
-        else:
-            _LOGGER.error("Unknown connection type: %s", connection_type)
-            return False
-        # Configure the device
-        await hass.async_add_executor_job(device.configure)
-
-    except Exception as e:
-        raise ConfigEntryNotReady(f"Could not connect to Cremalink device: {e}") from e
-
-    coordinator = CremalinkCoordinator(hass, device)
+    coordinator = EcamCoordinator(hass, device)
     await coordinator.async_config_entry_first_refresh()
 
-    # Statistics use a separate slow cloud-assisted A2 polling path.
-    #
-    # Local control remains fully local. If a cloud token is available,
-    # it is additionally used to obtain the live machine statistics.
-    statistics_coordinator = None
-    token_file = entry.data.get(CONF_TOKEN_FILE)
-
-    # Semantic A2 mappings are currently hardware-verified for ECAM610 only.
-    statistics_supported = supports_ecam610_statistics(map_selection)
-
-    if token_file and statistics_supported:
-        statistics_coordinator = CremalinkStatisticsCoordinator(
-            hass,
-            dsn=dsn,
-            token_file=token_file,
-        )
-
-        # Statistics are optional and relatively slow to fetch. Do not delay
-        # the main integration setup while the initial A2 snapshot is loaded.
+    statistics = None
+    if statistics_supported(device):
+        statistics = StatisticsCoordinator(hass, device, cloud)
+        # Optional and slower than the status; do not hold up setup.
         entry.async_create_background_task(
-            hass,
-            statistics_coordinator.async_refresh(),
-            f"{DOMAIN} initial statistics refresh",
+            hass, statistics.async_refresh(), "cremalink initial statistics"
         )
 
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {
-        "coordinator": coordinator,
-        "statistics_coordinator": statistics_coordinator,
-        "device": device,
-    }
-
+    entry.runtime_data = RuntimeData(
+        device=device,
+        link=link,
+        coordinator=coordinator,
+        statistics_coordinator=statistics,
+        cloud=cloud,
+    )
+    entry.async_on_unload(entry.add_update_listener(_async_reload_on_options))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a config entry.
+async def _async_reload_on_options(hass: HomeAssistant, entry: CremalinkConfigEntry) -> None:
+    await hass.config_entries.async_reload(entry.entry_id)
 
-    Args:
-        hass: The Home Assistant instance.
-        entry: The config entry.
 
-    Returns:
-        True if unload was successful.
+async def async_unload_entry(hass: HomeAssistant, entry: CremalinkConfigEntry) -> bool:
+    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unloaded:
+        runtime = entry.runtime_data
+        # Home Assistant shuts the coordinators down itself.
+        server = hass.data[DOMAIN]["lan"].server
+        await server.remove_link(runtime.link.device_ip)
+        await async_release_server(hass, entry.entry_id)
+    return unloaded
+
+
+def _read_legacy_refresh_token(path: str) -> str | None:
+    try:
+        token = json.loads(Path(path).read_text()).get("refresh_token")
+    except (OSError, ValueError):
+        return None
+    return token if isinstance(token, str) and token else None
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """v1 (cremalink + add-on) -> v2 (aioecam, no add-on).
+
+    The entry keeps its id, so every entity keeps its unique id and history.
     """
-    if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-        hass.data[DOMAIN].pop(entry.entry_id)
-    return unload_ok
+    if entry.version > 2:
+        return False  # downgrade from a newer version
+    if entry.version == 2:
+        return True
+
+    old = dict(entry.data)
+    device_map = str(old.get(LEGACY_CONF_DEVICE_MAP, "")).upper().removesuffix(".JSON")
+    profile = LEGACY_DEVICE_MAP_TO_PROFILE.get(device_map)
+    if profile is None:
+        _LOGGER.warning(
+            "unknown device map %r, using the %s profile; reconfigure if this is wrong",
+            old.get(LEGACY_CONF_DEVICE_MAP),
+            DEFAULT_PROFILE,
+        )
+        profile = DEFAULT_PROFILE
+
+    new: dict[str, Any] = {
+        CONF_DSN: old[CONF_DSN],
+        CONF_DEVICE_IP: old.get(CONF_DEVICE_IP),
+        CONF_LAN_KEY: old.get(CONF_LAN_KEY),
+        CONF_PROFILE: profile,
+    }
+    if token_file := old.get(LEGACY_CONF_TOKEN_FILE):
+        token = await hass.async_add_executor_job(_read_legacy_refresh_token, token_file)
+        if token:
+            new[CONF_REFRESH_TOKEN] = token
+    dropped = [k for k in (LEGACY_CONF_ADDON_URL, LEGACY_CONF_CONNECTION_TYPE) if k in old]
+    hass.config_entries.async_update_entry(entry, data=new, version=2)
+    _LOGGER.info(
+        "migrated %s to the add-on-free version (profile %s, dropped %s)",
+        entry.title,
+        profile,
+        ", ".join(dropped) or "nothing",
+    )
+    return True
