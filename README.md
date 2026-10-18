@@ -1,94 +1,106 @@
-# <img src="icon.png" alt="Cremalink Logo" height="45" style="vertical-align: middle; margin-right: 10px;"> cremalink for Home Assistant
+# <img src="icon.png" alt="Cremalink logo" height="45" style="vertical-align: middle; margin-right: 10px;"> Cremalink for Home Assistant
 
-**The official Home Assistant integration for monitoring and controlling IoT coffee machines via Cremalink.**
+**Local-first Home Assistant integration for De'Longhi Coffee Link machines (PrimaDonna Soul, Eletta Explore, …).**
 
-[![Open your Home Assistant instance and show the add add-on repository dialog with a specific repository URL pre-filled.](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fmiditkl%2Fcremalink-ha)
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?category=integration&repository=cremalink-ha&owner=miditkl)
-[![License](https://img.shields.io/github/license/miditkl/cremalink-ha?style=for-the-badge&color=success)](LICENSE)
-[![Source Code](https://img.shields.io/badge/Source-GitHub-black?style=for-the-badge&logo=github)](https://github.com/miditkl/cremalink-ha)
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?category=integration&repository=cremalink-ha&owner=Styx85)
+[![License](https://img.shields.io/github/license/Styx85/cremalink-ha?style=for-the-badge&color=success)](LICENSE)
 
----
-
-## ✨ Overview
-
-This integration connects your Home Assistant instance to the **Cremalink** ecosystem, allowing for real-time state monitoring and control of smart coffee machines. It is designed to work in tandem with the **Cremalink Server Add-on**.
-
-> [!NOTE] 
-> This project was developed with a result-oriented approach, primarily optimized for the **De'Longhi PrimaDonna Soul**. While the architecture is designed to be extensible, some logic may currently be tightly coupled to this specific model.
+> [!IMPORTANT]
+> **This fork is being rewritten from the ground up.**
 >
-> The goal is to make the library fully generic. If you encounter issues with other machines, contributions are highly encouraged!
-
-> [!NOTE]
-> **cremalink-ha** uses the main **[cremalink](https://github.com/miditkl/cremalink)** library for machine communication. The normal setup flow signs in to the De'Longhi/Ayla cloud account to discover compatible machines, determine the model, and retrieve the LAN details required for local communication. Local control through the Cremalink Server Add-on is preferred when LAN details are available; the advanced/manual setup flow remains available when needed.
----
-
-## 🚀 Installation
-
-### 1. Install the Add-on (Required only for local connection)
-
-Before installing this integration, you must install and configure the **Cremalink Server Add-on**. This add-on acts as the bridge between your coffee machine and Home Assistant.
-
-👉 **[Go to Add-on Documentation](addons/cremalink-server/README.md)** for setup instructions.
-
-### 2. Install the Integration
-
-**Via HACS (Recommended):**
-1.  Click the "Open your Home Assistant instance" badge above, or manually add this repository to HACS as a custom repository.
-2.  Search for "Cremalink" and install.
-3.  Restart Home Assistant.
-
-**Manual Installation:**
-1.  Copy the `custom_components/cremalink_ha` folder to your `config/custom_components/` directory.
-2.  Restart Home Assistant.
+> The rewrite removes the Cremalink Server add-on: Home Assistant talks to the
+> machine directly over the local network (Ayla LAN mode) through the new async
+> library **aioecam**. The De'Longhi cloud is only used to fetch the LAN key
+> during setup and, optionally, as a fallback to wake the machine.
+>
+> Until the rewrite is released, `main` still contains the add-on based
+> integration documented under [Current version](#current-version-add-on-based).
+> Entities, history and dashboards will be migrated automatically.
 
 ---
 
-## ⚙️ Configuration
+## Why a rewrite
 
-1.  Navigate to **Settings** > **Devices & Services**.
-2.  Click **Add Integration**.
-3.  Search for **Cremalink**.
-4.  Sign in with your Cremalink cloud account email and password. The integration
-    automatically discovers your coffee machine(s), detects the correct model, and
-    connects locally (via the add-on) whenever LAN details are available, falling
-    back to the cloud connection otherwise — no device map, DSN, or LAN key to type in.
-5.  Don't have (or don't want to use) a cloud account? Check **Advanced setup** on
-    the first screen to fall back to the previous manual flow: picking a device map
-    and entering the DSN/LAN key/IP (local) or a refresh token (cloud) by hand.
-    [More on the local add-on setup here.](https://github.com/miditkl/cremalink-ha/discussions/5)
+Measurements on a PrimaDonna Soul (ECAM610.75) in October 2026 traced the
+unreliable local connection of the add-on design to the client, not to the
+machine:
 
----
+| Finding | Effect today | In the rewrite |
+|---|---|---|
+| With a live session the machine ignores `PUT local_reg` for re-keying (0/10) but always re-keys on `POST` (10/10) | The add-on re-keys every 60 s via PUT and ends up with a "hollow" session: no status, commands fail with 502 | New sessions only via POST, PUT only as keep-alive, no forced re-key |
+| The machine pushes unrelated properties (app heartbeats, command echoes) | They overwrite the machine status, which then shows as unknown or stuck | Datapoints are routed by property name |
+| Sessions, status and power on/off keep working without internet | — | Local is the primary path, the cloud is optional |
+| After a restart of the Wi-Fi module without internet, it refuses LAN mode until it has reached the cloud again | Silent endless retries | Detected and reported clearly |
+| An extra server process is needed | Add-on, or a hand-built container on Docker installs | Runs inside Home Assistant, no add-on |
 
-## ☕ ECAM610 / PrimaDonna Soul statistics
+The architecture and milestones are documented in
+[docs/aioecam-plan.md](docs/aioecam-plan.md), and the probe tools used for the
+measurements are in [tools/](tools/).
 
-On supported ECAM610-class machines, the integration reads the native A2
-statistics table directly from the machine. This avoids relying on cloud
-service counters that may be stale.
+### Rewrite status
 
-The currently exposed statistics include beverage totals, individual beverage
-counters, maintenance counts, counted operating water, water since the last
-filter replacement, and a raw weighted descale-load value. Unknown A2 IDs are
-kept available through the disabled-by-default diagnostics entity instead of
-being assigned speculative meanings.
-
-A2 statistics are intentionally refreshed more slowly than the live machine
-status because a complete table read may take substantially longer than the
-normal monitor polling cycle.
-
-## 🤝 Contributing
-
-Contributions are welcome! If you have a machine profile not yet supported, please check the [Project Wiki of the official cremalink repository](https://github.com/miditkl/cremalink/wiki/) on how to add new definitions.
+| Milestone | Status |
+|---|---|
+| Protocol codec, monitor parsing, model profiles | ✅ done |
+| Local LAN transport (verified live on an ECAM610.75) | ✅ done |
+| Device API with confirmed commands, A2 statistics | ⏭️ next |
+| Cloud onboarding and wake fallback | ⏳ planned |
+| Home Assistant integration without add-on, migration | ⏳ planned |
+| 24 h soak test and release | ⏳ planned |
 
 ---
 
-## 💫 Star History
+## Current version (add-on based)
 
-[![Star History Chart](https://api.star-history.com/svg?repos=miditkl/cremalink-ha&type=date&logscale&legend=top-left)](https://www.star-history.com/#miditkl/cremalink-ha&type=date&logscale&legend=top-left)
+### Installation
+
+1. **Add-on (local connection only):** install and configure the Cremalink
+   Server add-on, which bridges the machine and Home Assistant. See the
+   [add-on documentation](addons/cremalink-server/README.md).
+2. **Integration via HACS:** click the HACS badge above, or add this repository
+   to HACS as a custom repository. Search for "Cremalink", install it and
+   restart Home Assistant.
+3. **Manual installation:** copy `custom_components/cremalink_ha` to your
+   `config/custom_components/` directory and restart Home Assistant.
+
+### Configuration
+
+1. Go to **Settings** > **Devices & Services** > **Add Integration** and search
+   for **Cremalink**.
+2. Sign in with your De'Longhi Coffee Link account. The integration discovers
+   your machines, detects the model and connects locally through the add-on
+   when LAN details are available, otherwise through the cloud.
+3. Without a cloud account, tick **Advanced setup** on the first screen to
+   enter the device map, DSN, LAN key and IP (local) or a refresh token (cloud)
+   by hand.
+
+### Additions in this fork
+
+- Native **A2 statistics** read from ECAM610-class machines: beverage totals
+  and per-beverage counters, maintenance counts, operating water, water since
+  the last filter change, and a raw descale-load value. Unknown A2 IDs stay
+  available in a disabled-by-default diagnostics entity rather than being
+  given guessed meanings. They refresh more slowly than the live status
+  because a full table read takes longer.
+- **English and German** entity and command names.
+- The last valid status is **retained across short connection drops**
+  instead of flapping to unknown.
+
+---
+
+## 🙏 Credits
+
+This fork is **heavily based on [cremalink-ha](https://github.com/miditkl/cremalink-ha)
+and [cremalink](https://github.com/miditkl/cremalink) by
+[Midian Tekle Elfu (@miditkl)](https://github.com/miditkl)**, including the
+cloud-assisted onboarding contributed by [@lodzen](https://github.com/lodzen).
+The original integration, device maps and protocol work made this project
+possible. Improvements found here are offered upstream as pull requests where
+they fit.
+
+Not affiliated with De'Longhi or Ayla Networks.
 
 ## 📄 License
 
-Distributed under the **AGPL-3.0-or-later** License. See `LICENSE` for more information.
-
----
-
-*Developed by [Midian Tekle Elfu](mailto:developer@midian.tekleelfu.de). Supported by the community.*
+Distributed under the **AGPL-3.0-or-later** license, like the upstream
+projects. See [LICENSE](LICENSE).
