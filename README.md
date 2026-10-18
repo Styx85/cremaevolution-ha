@@ -171,3 +171,26 @@ reads/writes and does not infer brewability from a descriptor or priority list.
 It may remain empty until recipe properties arrive. The bounded in-memory cache
 resets on reload. Household names are redacted; serial/PIN/settings frames are
 excluded. This requires aioecam 0.1.0b5 and was introduced in 0.3.0b4.
+
+### Read recipe data once (0.3.0b5)
+
+On the Soul family, enable the diagnostic button **Read recipe data once** in the
+entity settings. It is disabled by default and never runs at setup or on a timer.
+Press it once, allow up to two minutes, then download the integration diagnostics.
+`recipe_read` reports progress, completion/partial result and per-property errors;
+`recipe_catalog` contains the validated responses. The button becomes available
+again when the run ends.
+
+The reader uses only property GETs on the existing HA LAN link: no wake, session
+announcement, settings write or brew command. Its fixed inventory comprises 173
+recipe/descriptor/priority properties observed on our ECAM610.75 plus four
+model/software properties. No Cloud login or discovery is needed. Other Soul
+firmwares may expose different names; they are not assumed compatible just
+because they use the same family profile. Other families have no reader button.
+
+Reads are sequential, with a two-second limit per property, a two-minute total
+budget and a stop after three consecutive read failures. Busy/disconnected
+machines stop the run, repeated presses do not queue runs, and HA unload cancels
+it. Valid results from a partial run remain in the catalogue. CRC/payload errors
+remain diagnostic errors, not drink availability claims. No new beverage controls
+are created. Keep competing Coffee Link LAN servers disabled.

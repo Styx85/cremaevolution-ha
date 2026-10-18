@@ -41,6 +41,7 @@ from .const import (
     LEGACY_DEVICE_MAP_TO_PROFILE,
 )
 from .coordinator import EcamCoordinator
+from .recipe_reader import RecipeReader, supported as recipe_reads_supported
 from .runtime import RuntimeData, async_acquire_server, async_release_server
 from .statistics_coordinator import StatisticsCoordinator, statistics_supported
 
@@ -116,6 +117,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: CremalinkConfigEntry) ->
         coordinator=coordinator,
         statistics_coordinator=statistics,
         cloud=cloud,
+        recipe_reader=RecipeReader(device, coordinator.async_update_listeners)
+        if recipe_reads_supported(device) else None,
     )
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
