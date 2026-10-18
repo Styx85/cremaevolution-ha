@@ -93,3 +93,34 @@ async def test_unload_releases_the_server(hass: HomeAssistant, machine: FakeMach
     await hass.async_block_till_done()
     assert entry.state is ConfigEntryState.NOT_LOADED
     assert "lan" not in hass.data.get(DOMAIN, {})
+
+
+async def test_token_rotation_does_not_reload(hass: HomeAssistant, machine: FakeMachine) -> None:
+    """Regression: a rotated refresh token was saved with a reload listener in place,
+    so every cloud call restarted the integration in a loop (entities unavailable)."""
+    entry = MockConfigEntry(domain=DOMAIN, version=2, title="Soul", unique_id=V2_DATA["dsn"],
+                            data={**V2_DATA, "refresh_token": "refresh-0"})  # fmt: skip
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    runtime = entry.runtime_data
+    assert runtime.cloud is not None
+
+    # Exactly what aioecam does after a token refresh.
+    runtime.cloud._on_refresh_token("refresh-1")  # type: ignore[misc]
+    await hass.async_block_till_done()
+
+    assert entry.data["refresh_token"] == "refresh-1"
+    assert entry.state is ConfigEntryState.LOADED
+    assert entry.runtime_data is runtime  # same objects: not reloaded
+    assert runtime.link.state == "active"
+
+
+async def test_options_change_reloads(hass: HomeAssistant, machine: FakeMachine) -> None:
+    entry = await _setup(hass)
+    before = entry.runtime_data
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    await hass.config_entries.options.async_configure(result["flow_id"], {"lan_port": 10281})
+    await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.LOADED
+    assert entry.runtime_data is not before  # reloaded with the new options

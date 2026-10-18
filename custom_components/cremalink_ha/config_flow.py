@@ -18,7 +18,7 @@ from homeassistant.config_entries import (
     ConfigEntry,
     ConfigFlow,
     ConfigFlowResult,
-    OptionsFlow,
+    OptionsFlowWithReload,
 )
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -236,8 +236,12 @@ class CremalinkConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(step_id="reconfigure", data_schema=schema, errors=errors)
 
 
-class CremalinkOptionsFlow(OptionsFlow):
-    """Callback server port and the address announced to the machine."""
+class CremalinkOptionsFlow(OptionsFlowWithReload):
+    """Callback server port and the address announced to the machine.
+
+    Reloads the entry only when options change; data updates (e.g. a rotated
+    refresh token) never reload it.
+    """
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:

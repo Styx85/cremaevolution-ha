@@ -74,6 +74,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: CremalinkConfigEntry) ->
     if data.get(CONF_REFRESH_TOKEN):
 
         def _store_token(token: str) -> None:
+            # Persist the rotating token. This must not reload the entry: only
+            # option changes do (OptionsFlowWithReload), otherwise every token
+            # refresh would restart the integration in a loop.
             hass.config_entries.async_update_entry(
                 entry, data={**entry.data, CONF_REFRESH_TOKEN: token}
             )
@@ -114,13 +117,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: CremalinkConfigEntry) ->
         statistics_coordinator=statistics,
         cloud=cloud,
     )
-    entry.async_on_unload(entry.add_update_listener(_async_reload_on_options))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
-
-
-async def _async_reload_on_options(hass: HomeAssistant, entry: CremalinkConfigEntry) -> None:
-    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: CremalinkConfigEntry) -> bool:

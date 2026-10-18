@@ -127,6 +127,8 @@ class FakeDevice:
                 await coro
 
         task = asyncio.create_task(quiet())
+        # A task cancelled before it started never runs ``coro``: close it explicitly.
+        task.add_done_callback(lambda _t: coro.close())
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
