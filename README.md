@@ -49,7 +49,7 @@ probe tools used for the measurements are in [tools/](tools/).
 | Device API with confirmed commands, A2 statistics (verified live: on, espresso, off, full A2 table) | ✅ done |
 | Cloud onboarding and wake fallback (verified with a real account) | ✅ done |
 | Home Assistant integration without add-on, migration | ✅ done (tested against a real HA core) |
-| Beta releases | ✅ available; 0.3.0b7 uses aioecam 0.1.0b6 |
+| Beta releases | ✅ available; 0.3.0b8 uses aioecam 0.1.0b6 |
 | 24 h soak test | ⏳ planned |
 
 ### Hardware validation and beta scope
@@ -237,7 +237,7 @@ Verified on the ECAM610.75 through the library (auto-off write and restore,
 profile 1 → 2 → 1, 100 ml hot water); the Home Assistant entities and the
 service themselves are tested against the simulated machine.
 
-### Recipe reads continue where they stopped (unreleased)
+### Recipe reads continue where they stopped (0.3.0b8)
 
 A full read of the 177 properties takes longer than the 120-second budget of
 one press (the first complete live run reached 128). A press now reads one
