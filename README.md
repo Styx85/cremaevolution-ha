@@ -60,7 +60,7 @@ probe tools used for the measurements are in [tools/](tools/).
 | Device API with confirmed commands, A2 statistics (verified live: on, espresso, off, full A2 table) | ✅ done |
 | Cloud onboarding and wake fallback (verified with a real account) | ✅ done |
 | Home Assistant integration without add-on, migration | ✅ done (tested against a real HA core) |
-| Beta releases | ✅ available; 0.3.0b13 uses aioecam 0.1.0b9 |
+| Beta releases | ✅ available; 0.3.1b1 uses aioecam 0.1.0b9 |
 | 24 h soak test | ⏳ planned |
 
 ### Hardware validation and beta scope
