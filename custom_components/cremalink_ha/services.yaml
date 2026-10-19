@@ -1,0 +1,66 @@
+brew_custom:
+  fields:
+    device_id:
+      required: true
+      selector:
+        device:
+          integration: cremalink_ha
+    beverage:
+      required: true
+      example: hot_water
+      selector:
+        select:
+          custom_value: true
+          translation_key: beverage
+          options:
+            - americano
+            - caffe_latte
+            - cappuccino
+            - cappuccino_mix
+            - cappuccino_plus
+            - coffee
+            - cortado
+            - double_espresso
+            - espresso
+            - espresso_macchiato
+            - espresso_soul
+            - flat_white
+            - hot_milk
+            - hot_water
+            - latte_macchiato
+            - long_coffee
+    profile:
+      default: 1
+      selector:
+        number:
+          min: 1
+          max: 5
+          mode: box
+    coffee_ml:
+      selector:
+        number:
+          min: 15
+          max: 250
+          unit_of_measurement: ml
+    water_ml:
+      selector:
+        number:
+          min: 20
+          max: 420
+          unit_of_measurement: ml
+    milk:
+      selector:
+        number:
+          min: 0
+          max: 1000
+          mode: box
+    temperature:
+      selector:
+        number:
+          min: 0
+          max: 3
+    intensity:
+      selector:
+        number:
+          min: 0
+          max: 5

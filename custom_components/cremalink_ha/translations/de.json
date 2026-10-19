@@ -217,6 +217,28 @@
       "power": {
         "name": "Ein/Aus"
       }
+    },
+    "select": {
+      "auto_off": {
+        "name": "Automatisch aus",
+        "state": {
+          "15_min": "15 Min.",
+          "30_min": "30 Min.",
+          "1_h": "1 Std."
+        }
+      },
+      "water_hardness": {
+        "name": "Wasserhärte",
+        "state": {
+          "level_1": "Stufe 1",
+          "level_2": "Stufe 2",
+          "level_3": "Stufe 3",
+          "level_4": "Stufe 4"
+        }
+      },
+      "profile": {
+        "name": "Benutzerprofil"
+      }
     }
   },
   "config": {
@@ -287,6 +309,68 @@
           "lan_port": "Port für die Rückrufe der Maschine",
           "advertise_ip": "Der Maschine angekündigte Adresse (optional)"
         }
+      }
+    }
+  },
+  "services": {
+    "brew_custom": {
+      "name": "Getränk mit eigener Menge",
+      "description": "Bereitet ein Getränk mit dem Rezept der Maschine für das gewählte Profil zu und ändert nur die angegebenen Mengen. Die Maschine muss bereit sein; Parameter, die das Rezept nicht kennt, werden abgelehnt.",
+      "fields": {
+        "device_id": {
+          "name": "Kaffeemaschine",
+          "description": "Die zu verwendende Maschine."
+        },
+        "beverage": {
+          "name": "Getränk",
+          "description": "Gespeichertes Getränk, das gestartet wird."
+        },
+        "profile": {
+          "name": "Profil",
+          "description": "Profil, dessen Rezept verwendet wird (1-5)."
+        },
+        "coffee_ml": {
+          "name": "Kaffee",
+          "description": "Kaffeemenge in ml."
+        },
+        "water_ml": {
+          "name": "Wasser",
+          "description": "Wassermenge in ml (z. B. Heißwasser, Americano)."
+        },
+        "milk": {
+          "name": "Milch",
+          "description": "Milchmenge als Rohwert der Maschine."
+        },
+        "temperature": {
+          "name": "Temperatur",
+          "description": "Temperaturstufe 0-3 (Rohwert, keine Grad)."
+        },
+        "intensity": {
+          "name": "Intensität",
+          "description": "Stärkestufe 0-5 (Rohwert)."
+        }
+      }
+    }
+  },
+  "selector": {
+    "beverage": {
+      "options": {
+        "americano": "Americano",
+        "caffe_latte": "Caffé Latte",
+        "cappuccino": "Cappuccino",
+        "cappuccino_mix": "Cappuccino Mix",
+        "cappuccino_plus": "Cappuccino+",
+        "coffee": "Coffee",
+        "cortado": "Cortado",
+        "double_espresso": "Double Espresso",
+        "espresso": "Espresso",
+        "espresso_macchiato": "Espresso Macchiato",
+        "espresso_soul": "Espresso Soul",
+        "flat_white": "Flat White",
+        "hot_milk": "Hot Milk",
+        "hot_water": "Hot Water",
+        "latte_macchiato": "Latte Macchiato",
+        "long_coffee": "Long Coffee"
       }
     }
   }

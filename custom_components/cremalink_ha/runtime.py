@@ -20,6 +20,7 @@ from .const import DOMAIN
 if TYPE_CHECKING:
     from .coordinator import EcamCoordinator
     from .recipe_reader import RecipeReader
+    from .settings_coordinator import SettingsCoordinator
     from .statistics_coordinator import StatisticsCoordinator
 
 
@@ -31,6 +32,7 @@ class RuntimeData:
     statistics_coordinator: StatisticsCoordinator | None
     cloud: AylaCloud | None
     recipe_reader: RecipeReader | None = None
+    settings_coordinator: SettingsCoordinator | None = None
 
 
 @dataclass

@@ -33,8 +33,10 @@ async def setup(hass):
         domain=DOMAIN, version=2, title="Soul", data=V2_DATA, unique_id=V2_DATA["dsn"]
     )
     entry.add_to_hass(hass)
-    with patch(
-        "custom_components.cremalink_ha.statistics_supported", return_value=False
+    with (
+        patch("custom_components.cremalink_ha.statistics_supported", return_value=False),
+        # these tests assert that no ECAM command is sent; settings polling would read 0x95
+        patch("custom_components.cremalink_ha.settings_supported", return_value=False),
     ):
         assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
@@ -68,8 +70,10 @@ async def test_button_opt_in_and_reads_without_writing(
     assert reader.result == "not_started" and not machine.received
     registry.async_update_entity(entity_id, disabled_by=None)
     # Reload with the registry preference retained, then press the actual HA button.
-    with patch(
-        "custom_components.cremalink_ha.statistics_supported", return_value=False
+    with (
+        patch("custom_components.cremalink_ha.statistics_supported", return_value=False),
+        # these tests assert that no ECAM command is sent; settings polling would read 0x95
+        patch("custom_components.cremalink_ha.settings_supported", return_value=False),
     ):
         await hass.config_entries.async_reload(entry.entry_id)
     await hass.async_block_till_done()

@@ -49,7 +49,7 @@ probe tools used for the measurements are in [tools/](tools/).
 | Device API with confirmed commands, A2 statistics (verified live: on, espresso, off, full A2 table) | ✅ done |
 | Cloud onboarding and wake fallback (verified with a real account) | ✅ done |
 | Home Assistant integration without add-on, migration | ✅ done (tested against a real HA core) |
-| Beta releases | ✅ available; 0.3.0b3 uses aioecam 0.1.0b4 |
+| Beta releases | ✅ available; 0.3.0b7 uses aioecam 0.1.0b6 |
 | 24 h soak test | ⏳ planned |
 
 ### Hardware validation and beta scope
@@ -63,9 +63,9 @@ simulated coffee machine, and do not establish hardware compatibility for
 other models.
 
 Version **0.3.0b3** pins **aioecam 0.1.0b4**, including its improved answer
-routing and handling of retained profile/recipe answers. The library's new
-APIs for settings, profile selection and custom beverage parameters are not
-yet exposed as Home Assistant entities or services. The final recipe-polling
+routing and handling of retained profile/recipe answers. Since **0.3.0b7**
+the library's settings, profile selection and custom beverage parameters are
+exposed in Home Assistant (see below). The final recipe-polling
 fix has simulated-device coverage rather than a repeat hardware test; whether
 monitor changes require polling also remains open. See the library's
 [hardware results and limitations](https://github.com/Styx85/aioecam/blob/main/docs/m7-protocol.md).
@@ -205,3 +205,33 @@ budget and three-failure stop still apply. There are no automatic read retries.
 Descriptor defaults outside their reported min/max are preserved as raw values
 with `default_in_range: false`, rather than losing the entire descriptor. This
 flag is diagnostic and does not authorize those values for brewing.
+
+
+### Settings, profile and custom amounts (0.3.0b7)
+
+- **Auto-off** and **water hardness** selects (configuration category). They
+  are read every 15 minutes and also work in standby; a write is confirmed by
+  reading the value back. Only auto-off values every source agrees on are
+  offered (15 min, 30 min, 1 h). A machine set to another value shows as
+  unknown, with the raw value as an attribute.
+- **User profile** select. The machine does not report the active profile, so
+  the select shows the last profile chosen in Home Assistant and acknowledged
+  by the machine. Profile names load once the machine is awake; changing the
+  profile is refused while the machine is in standby.
+- Service **`cremalink_ha.brew_custom`**: brews a stored beverage with the
+  machine's own recipe for the chosen profile and changes only the amounts
+  you pass (`coffee_ml`, `water_ml`, `milk`, `temperature`, `intensity`).
+  Parameters the beverage does not have are refused rather than invented.
+  Example:
+
+  ```yaml
+  action: cremalink_ha.brew_custom
+  data:
+    device_id: <your machine>
+    beverage: hot_water
+    water_ml: 100
+  ```
+
+Verified on the ECAM610.75 through the library (auto-off write and restore,
+profile 1 → 2 → 1, 100 ml hot water); the Home Assistant entities and the
+service themselves are tested against the simulated machine.
