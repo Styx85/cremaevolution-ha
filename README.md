@@ -1,12 +1,23 @@
-# <img src="icon.png" alt="Cremalink logo" height="45" style="vertical-align: middle; margin-right: 10px;"> Cremalink for Home Assistant
+# <img src="icon.png" alt="CremaEvolution logo" height="45" style="vertical-align: middle; margin-right: 10px;"> CremaEvolution
 
 **Local-first Home Assistant integration for De'Longhi Coffee Link machines (PrimaDonna Soul, Eletta Explore, …).**
 
-This is the fork maintained by **[Styx85](https://github.com/Styx85)**.
+**CremaEvolution** grew out of a fork of
+[cremalink-ha](https://github.com/miditkl/cremalink-ha) and was known as
+"Cremalink for Home Assistant" until 0.3.0b12. After a ground-up rewrite on
+its own library, [aioecam](https://github.com/Styx85/aioecam), it continues
+as its own project, maintained by **[Styx85](https://github.com/Styx85)**.
 The original authors are acknowledged in [Credits](#-credits).
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?category=integration&repository=cremalink-ha&owner=Styx85)
-[![License](https://img.shields.io/github/license/Styx85/cremalink-ha?style=for-the-badge&color=success)](LICENSE)
+> [!NOTE]
+> **Renamed, nothing to do.** The integration domain is still `cremalink_ha`,
+> so entities, entity ids, history, automations and the
+> `cremalink_ha.brew_custom` action keep working. The GitHub repository moved
+> to `Styx85/cremaevolution-ha`; old links redirect. A later release will move
+> to its own domain with an automatic migration and will say so clearly.
+
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?category=integration&repository=cremaevolution-ha&owner=Styx85)
+[![License](https://img.shields.io/github/license/Styx85/cremaevolution-ha?style=for-the-badge&color=success)](LICENSE)
 
 > [!IMPORTANT]
 > **Version 0.3 is a ground-up rewrite: no add-on any more.**
@@ -49,7 +60,7 @@ probe tools used for the measurements are in [tools/](tools/).
 | Device API with confirmed commands, A2 statistics (verified live: on, espresso, off, full A2 table) | ✅ done |
 | Cloud onboarding and wake fallback (verified with a real account) | ✅ done |
 | Home Assistant integration without add-on, migration | ✅ done (tested against a real HA core) |
-| Beta releases | ✅ available; 0.3.0b12 uses aioecam 0.1.0b9 |
+| Beta releases | ✅ available; 0.3.1b1 uses aioecam 0.1.0b9 |
 | 24 h soak test | ⏳ planned |
 
 ### Hardware validation and beta scope
@@ -81,8 +92,8 @@ unidentified raw statistic rather than being given a guessed meaning.
 ## Installation
 
 1. **HACS:** click the HACS badge above, or add this repository to HACS as a
-   custom repository: `https://github.com/Styx85/cremalink-ha` (category:
-   Integration). Check that the repository is `Styx85/cremalink-ha`, install
+   custom repository: `https://github.com/Styx85/cremaevolution-ha` (category:
+   Integration). Check that the repository is `Styx85/cremaevolution-ha`, install
    it and restart Home Assistant. If HACS still lists the original author
    after switching forks, refresh its repository information; `codeowners`
    in this fork identifies `@Styx85`.
@@ -97,7 +108,7 @@ and set the announced address in the options.
 ## Configuration
 
 1. Go to **Settings** > **Devices & Services** > **Add Integration** and search
-   for **Cremalink**.
+   for **CremaEvolution**.
 2. Sign in with your De'Longhi Coffee Link account. The integration finds your
    machine, its model, its IP address and its local key. Only a refresh token
    is stored, never your password.
@@ -136,7 +147,7 @@ ask you to sign in once, to fetch the local key.
 
 ## 🙏 Credits
 
-This fork is **heavily based on [cremalink-ha](https://github.com/miditkl/cremalink-ha)
+CremaEvolution is **heavily based on [cremalink-ha](https://github.com/miditkl/cremalink-ha)
 and [cremalink](https://github.com/miditkl/cremalink) by
 [Midian Tekle Elfu (@miditkl)](https://github.com/miditkl)**, including the
 cloud-assisted onboarding contributed by [@lodzen](https://github.com/lodzen).

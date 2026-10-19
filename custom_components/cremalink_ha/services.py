@@ -77,7 +77,7 @@ def _runtime_for_device(hass: HomeAssistant, device_id: str) -> Any:
                 if entry.state is not ConfigEntryState.LOADED:
                     raise HomeAssistantError(f"{entry.title} is not loaded")
                 return entry.runtime_data
-    raise ServiceValidationError(f"{device_id} is not a Cremalink coffee machine")
+    raise ServiceValidationError(f"{device_id} is not a CremaEvolution coffee machine")
 
 
 async def _async_brew_custom(call: ServiceCall) -> None:
