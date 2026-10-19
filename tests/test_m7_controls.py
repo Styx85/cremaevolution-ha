@@ -138,7 +138,7 @@ async def test_brew_custom_refuses_invalid_requests(hass: HomeAssistant, machine
             DOMAIN, "brew_custom", {"device_id": device_id, "beverage": "espresso", "milk": 100},
             blocking=True,
         )  # fmt: skip
-    with pytest.raises(ServiceValidationError, match="not a Cremalink"):
+    with pytest.raises(ServiceValidationError, match="not a CremaEvolution"):
         await hass.services.async_call(
             DOMAIN, "brew_custom", {"device_id": "nope", "beverage": "espresso"}, blocking=True
         )

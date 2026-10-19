@@ -1,20 +1,20 @@
 {
   "domain": "cremalink_ha",
-  "name": "Cremalink for Home-Assistant",
+  "name": "CremaEvolution",
   "codeowners": [
     "@Styx85"
   ],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://github.com/Styx85/cremalink-ha",
+  "documentation": "https://github.com/Styx85/cremaevolution-ha",
   "integration_type": "hub",
   "iot_class": "local_polling",
-  "issue_tracker": "https://github.com/Styx85/cremalink-ha/issues",
+  "issue_tracker": "https://github.com/Styx85/cremaevolution-ha/issues",
   "loggers": [
     "aioecam"
   ],
   "requirements": [
     "aioecam==0.1.0b9"
   ],
-  "version": "0.3.0b12"
+  "version": "0.3.0b13"
 }
