@@ -341,13 +341,9 @@
           "name": "Milch",
           "description": "Milchmenge als Rohwert der Maschine."
         },
-        "temperature": {
-          "name": "Temperatur",
-          "description": "Temperaturstufe 0-3 (Rohwert, keine Grad)."
-        },
         "intensity": {
           "name": "Intensität",
-          "description": "Stärkestufe 0-5 (Rohwert)."
+          "description": "Aroma-/Stärkestufe 0-5 (Rohwert, Parameter TASTE der App)."
         }
       }
     }
