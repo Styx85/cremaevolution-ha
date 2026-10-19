@@ -1,9 +1,11 @@
 """Machine state coordinator.
 
-The machine answers monitor reads but does not reliably push changes, so the
-coordinator polls: fast while the machine is awake, slow in standby (where the
-Wi-Fi module returns a frozen frame anyway). Pushes that do arrive are applied
-immediately.
+The machine does not reliably push changes, so the coordinator polls: fast
+while the machine is awake, slow in standby. Each poll is an explicit monitor
+request (0x75) that waits for a fresh frame: with its internet access blocked
+the Wi-Fi module published no state changes at all, and a plain read kept
+returning the frame from before a wake-up (measured 2026-10-19). Pushes that
+do arrive are applied immediately.
 """
 
 from __future__ import annotations
@@ -54,7 +56,7 @@ class EcamCoordinator(DataUpdateCoordinator[MonitorView]):
 
     async def _async_update_data(self) -> MonitorView:
         try:
-            state = await self.device.refresh(timeout=8)
+            state = await self.device.request_monitor(timeout=3)
         except EcamError as err:
             self.monitor_consecutive_failures += 1
             if self.data is not None and self.monitor_consecutive_failures <= TRANSIENT_FAILURE_LIMIT:

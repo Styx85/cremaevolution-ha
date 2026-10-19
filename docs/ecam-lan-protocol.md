@@ -504,7 +504,8 @@ Specific to LAN mode:
 |---|---|---|
 | Keep and re-create sessions, read monitor | ✅ 15 min | |
 | Standby command | ✅ | |
-| Wake command | ❌ once, ✅ once | The failure came after a long standby with an empty water tank; the success after 2 min of standby with a full tank. Not conclusive. |
+| Wake / standby command | ✅ | 2026-10-19: three wakes and one off, each reacted within ~2 s on the display, with plain, `device_connected`-first and `?dsn=` sessions alike. The earlier "❌ once" was most likely a missed confirmation (see below). |
+| Monitor updates | ⚠️ only on request | The module published **no** state change by itself; reading `d302_monitor` returned the frame from before the wake. A `0x75` request publishes the current state ~1–2 s after the module fetched it. |
 | New sessions after a **module restart** | ❌ | Module refuses LAN mode until it reaches the cloud (2.1, 2.2) |
 
 What the app does **[app]**: the Coffee Link app wakes the Soul with the
@@ -522,6 +523,12 @@ and the cloud fallback off.
 The Ayla SDK can acknowledge a datapoint per command id (ACK/NAK) **[app]**.
 Such an acknowledgement only shows that the module took the command, not that
 the machine woke up or brewed; confirm by a monitor change.
+
+So without internet, confirm a command by sending `0x75` and waiting for a
+frame with a newer payload timestamp, not by re-reading the property
+(aioecam ≥ 0.1.0b9 does this; the integration polls this way since 0.3.0b12).
+Whether the module publishes changes itself when it reaches the cloud is
+**[open]**, and so is an offline wake after an overnight standby.
 
 Practical advice: verify every command by its effect on the monitor, and
 offer a cloud fallback for waking if available. Blocking the machine's

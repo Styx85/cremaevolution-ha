@@ -49,7 +49,7 @@ probe tools used for the measurements are in [tools/](tools/).
 | Device API with confirmed commands, A2 statistics (verified live: on, espresso, off, full A2 table) | ✅ done |
 | Cloud onboarding and wake fallback (verified with a real account) | ✅ done |
 | Home Assistant integration without add-on, migration | ✅ done (tested against a real HA core) |
-| Beta releases | ✅ available; 0.3.0b11 uses aioecam 0.1.0b8 |
+| Beta releases | ✅ available; 0.3.0b12 uses aioecam 0.1.0b9 |
 | 24 h soak test | ⏳ planned |
 
 ### Hardware validation and beta scope
@@ -277,3 +277,12 @@ From a closer look at the Coffee Link app 4.9.6:
 - The last byte of a brew command is the profile plus an operation mode
   (2 = prepare); earlier notes called it an accessory code. Custom amounts
   always use "prepare", so they never change a stored recipe.
+
+### Status without internet (0.3.0b12)
+
+Tested on the ECAM610.75 with its internet access blocked: switching on and
+off works locally within about two seconds. The Wi-Fi module does not report
+state changes by itself, though, so a plain read kept showing "standby"
+after the machine had woken up. The integration now asks the machine for a
+fresh status on every poll (monitor request) and waits for the new frame,
+so the state follows without internet as well. Requires aioecam 0.1.0b9.
