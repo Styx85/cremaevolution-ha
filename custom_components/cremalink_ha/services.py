@@ -36,7 +36,7 @@ ATTR_PROFILE = "profile"
 # intensity are raw protocol values (0-3 / 0-5), not degrees or display steps.
 AMOUNTS: dict[str, tuple[int, int, int]] = {
     "coffee_ml": (TAG_COFFEE_ML, 15, 250),
-    "water_ml": (TAG_WATER_ML, 15, 500),
+    "water_ml": (TAG_WATER_ML, 20, 420),  # hot water/tea descriptors on the Soul
     "milk": (TAG_MILK, 0, 1000),
     "temperature": (TAG_TEMPERATURE, 0, 3),
     "intensity": (TAG_INTENSITY, 0, 5),

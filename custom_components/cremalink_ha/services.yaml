@@ -45,8 +45,8 @@ brew_custom:
     water_ml:
       selector:
         number:
-          min: 15
-          max: 500
+          min: 20
+          max: 420
           unit_of_measurement: ml
     milk:
       selector:
