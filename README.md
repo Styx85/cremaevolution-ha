@@ -49,7 +49,7 @@ probe tools used for the measurements are in [tools/](tools/).
 | Device API with confirmed commands, A2 statistics (verified live: on, espresso, off, full A2 table) | ✅ done |
 | Cloud onboarding and wake fallback (verified with a real account) | ✅ done |
 | Home Assistant integration without add-on, migration | ✅ done (tested against a real HA core) |
-| Beta releases | ✅ available; 0.3.0b8 uses aioecam 0.1.0b6 |
+| Beta releases | ✅ available; 0.3.0b9 uses aioecam 0.1.0b6 |
 | 24 h soak test | ⏳ planned |
 
 ### Hardware validation and beta scope
@@ -221,7 +221,7 @@ flag is diagnostic and does not authorize those values for brewing.
   profile is refused while the machine is in standby.
 - Service **`cremalink_ha.brew_custom`**: brews a stored beverage with the
   machine's own recipe for the chosen profile and changes only the amounts
-  you pass (`coffee_ml`, `water_ml`, `milk`, `temperature`, `intensity`).
+  you pass (`coffee_ml`, `water_ml`, `milk`, `intensity`).
   Parameters the beverage does not have are refused rather than invented.
   Example:
 
@@ -256,3 +256,11 @@ no background retries.
 - Once the pass is complete, the next press deliberately starts a fresh pass.
 - The pass is kept in memory only: restarting Home Assistant or reloading the
   integration starts a new pass from the first property.
+
+### Correction: no temperature field (0.3.0b9)
+
+0.3.0b7 and 0.3.0b8 offered a `temperature` field in `cremalink_ha.brew_custom`
+that wrote recipe tag `0x1B`. A static analysis of the Coffee Link app 4.9.6
+shows that this tag is `INDEX_LENGTH` (a size index), not a temperature; the
+app's temperatures are tags `0x00` and `0x0D`. The field is removed. Calls that
+still pass `temperature` are rejected. `intensity` is the app's `TASTE` step.

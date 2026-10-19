@@ -15,7 +15,8 @@ building a client can reuse them.
   [`docs/m7-protocol.md`](https://github.com/Styx85/aioecam/blob/main/docs/m7-protocol.md).
 - **Confidence labels:** **[measured]** = observed on the machine above with
   the numbers given; **[reported]** = from other projects, not reproduced
-  here; **[open]** = unresolved.
+  here; **[app]** = from a static analysis of the Coffee Link app 4.9.6
+  (what the app does, not proof of firmware behaviour); **[open]** = unresolved.
 
 A2 statistics are covered in depth in
 [ecam-a2-statistics.md](https://github.com/Styx85/cremalink/blob/ha-compat/2026.9/docs/ecam-a2-statistics.md);
@@ -348,9 +349,25 @@ outlet; accessory `0` must not block it.
 - `action`: `01` start, `02` stop (longshot also lists next step, stop
   program, advanced/programming modes **[reported]**).
 - Recipe parameters are TLVs: tag, then a value of **2 bytes** for tags
-  `0x01` coffee ml, `0x09` milk, `0x0F` water ml, otherwise 1 byte. Known
-  1-byte tags: `0x1B` temperature (raw 0–3), `0x02` intensity/taste (raw 0–5),
-  `0x08`, `0x04`, `0x19`, `0x1C`.
+  `0x01` coffee ml, `0x09` milk, `0x0F` water ml, otherwise 1 byte.
+- Tag names from the parameter enum of the Coffee Link app 4.9.6 (static
+  analysis, 2026-10-19) **[app]**:
+
+  | Tag | App name | Tag | App name |
+  |---|---|---|---|
+  | `0x00` | TEMP | `0x0D` | THE_TEMP (tea) |
+  | `0x01` | COFFEE | `0x0F` | HOT_WATER |
+  | `0x02` | TASTE (aroma/strength) | `0x18` | PROGRAMABLE |
+  | `0x04` | BLEND | `0x19` | VISIBLE |
+  | `0x08` | DUExPER (double) | `0x1A` | VISIBLE_IN_PROGRAMMING |
+  | `0x09` | MILK | `0x1B` | INDEX_LENGTH |
+  | `0x0A` | MILK_TEMP | `0x1C` | ACCESSORIO |
+
+  **Correction:** earlier versions of this document and aioecam ≤ 0.1.0b6
+  called `0x1B` *temperature*. The app names it `INDEX_LENGTH`, a size index
+  (its size enum knows SMALL 0, MID 1, LARGE 2, NOT_SET 255; live values such
+  as 4 do not fit it, so the exact meaning is open). Raw values reported
+  below are correct; only the name was wrong.
 - The app sends only tags `< 23` plus `27, 28, 31, 33, 38, 39`, and drops
   `0x08` (APK rule `E0`, via lodzen **[reported]**).
 - **Keep the machine's tag order.** The Soul's own frames are not sorted
@@ -359,7 +376,7 @@ outlet; accessory `0` must not block it.
 - Take the trailer's accessory bits from the stored command. They are not the
   monitor's accessory enum.
 - **Custom amounts work [measured]:** reading the hot-water recipe (profile
-  1: water 250 ml, temperature 1) and sending it with water 100 ml,
+  1: water 250 ml, tag `0x1B` = 1) and sending it with water 100 ml,
   `0d0d83f010010f00641b0106e5e1`, dispensed about 100 ml (status 11, back to
   ready after 43 s). The saved 250 ml recipe was unchanged afterwards.
 
@@ -423,6 +440,26 @@ Measured on the Soul, profile 1: espresso `08=0, 01=40 ml, 1B=1, 02=4, 04=0,
 data has raw defaults outside the reported range (0 or 255) for travel mug,
 over-ice and custom slots, so keep them instead of rejecting the descriptor.
 
+**Complete read of the Soul [measured, 2026-10-19]:** 28 descriptors, 28
+recipes in each of the 5 profile slots, 5 priority lists, no invalid frame.
+The 28 beverage ids are exactly the ids of the app's `PD_SOUL` model template
+(ECAM610.75: 5 profiles, 28 recipe definitions) **[app]**: 21 standard
+beverages, bean system `200` and custom `230`–`235`.
+
+- **`0x19` VISIBLE [app]:** the app hides a recipe with `0` and, for normal
+  beverages, shows an info page instead of a brew button with `2`. On the
+  Soul, tea (22), coffee pot (23), mug to go (26) and brew over ice (27) carry
+  `2`. This is app behaviour, not a proven firmware lock; `1` does not prove
+  that the beverage can be made with the installed hardware either.
+- **Priority lists** (`d261_1_rec_priority` … `d265_5_rec_priority`, opcode
+  `0xA8`): one list of 23 beverage ids per profile. The app uses the position
+  to order its beverage list **[app]**. Profile 1 had a user-specific order,
+  profiles 2–5 an identical (probably factory) order. Being in the list does
+  not make a beverage brewable.
+- **Identity:** `d560_versione_sw`, `d561_machine_model` and
+  `d562_versione_sw_ui` all read `0` on this machine; `software_version` is
+  the Wi-Fi module's firmware string. None of them identifies the model.
+
 ## 8. A2 statistics over LAN [measured]
 
 Request and response layout are in the
@@ -458,7 +495,7 @@ itself after a power cut.
 - Are monitor changes ever pushed unsolicited, and is the explicit monitor
   request needed compared with plain reads (section 6)?
 - Does waking after a *long* standby really require the cloud?
-- Meaning of the `action` codes and of recipe tags `0x04`, `0x08`, `0x19`.
+- Meaning of the `action` codes, and the exact meaning of `0x1B` INDEX_LENGTH values such as 4.
 - Auto-off values 2 and above (conflicting sources, 7.6).
 - Write-session lifetime and renewal; why a repeated recipe request is not
   republished (5).

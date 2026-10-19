@@ -341,13 +341,9 @@
           "name": "Milk",
           "description": "Milk amount as raw machine value."
         },
-        "temperature": {
-          "name": "Temperature",
-          "description": "Raw temperature step 0-3, not degrees."
-        },
         "intensity": {
           "name": "Intensity",
-          "description": "Raw strength step 0-5."
+          "description": "Raw aroma/strength step 0-5 (the app's TASTE parameter)."
         }
       }
     }

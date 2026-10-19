@@ -54,11 +54,6 @@ brew_custom:
           min: 0
           max: 1000
           mode: box
-    temperature:
-      selector:
-        number:
-          min: 0
-          max: 3
     intensity:
       selector:
         number:

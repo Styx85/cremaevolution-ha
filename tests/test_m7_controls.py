@@ -152,3 +152,19 @@ async def test_custom_beverages_excludes_unknown_start_byte(
     names = custom_beverages(entry.runtime_data.device.profile)
     assert "espresso" in names and "hot_water" in names
     assert "doppio_plus" not in names
+
+
+async def test_brew_custom_has_no_temperature_field(hass: HomeAssistant, machine: FakeMachine) -> None:
+    # Tag 0x1B is the app's INDEX_LENGTH, not a temperature (Coffee Link 4.9.6).
+    import voluptuous as vol
+
+    machine.recipes[(1, 1)] = D039_RECIPE_ESPRESSO_P1
+    entry = await _setup(hass)
+    with pytest.raises(vol.Invalid):
+        await hass.services.async_call(
+            DOMAIN,
+            "brew_custom",
+            {"device_id": _device_id(hass, entry), "beverage": "espresso", "temperature": 2},
+            blocking=True,
+        )
+    assert not any(f.opcode == 0x83 for f in machine.received)
