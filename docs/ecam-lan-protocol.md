@@ -374,7 +374,9 @@ outlet; accessory `0` must not block it.
   comes from a server-side parameter table in the app; "`0x01`, `0x09`, `0x0F`
   are wide" matches every Soul frame but is not a rule for all models.
 - The app sends only tags `< 23` plus `27, 28, 31, 33, 38, 39`, and drops
-  `0x08` (APK rule `E0`, via lodzen **[reported]**).
+  `0x08` (APK rule `E0`, via lodzen **[reported]**). The explicit `0x08` drop
+  is in app versions 4.7.2 and 4.9.6 but not in 4.2.3 **[app]**; aioecam
+  follows the newer builder.
 - **Keep the machine's tag order.** The Soul's own frames are not sorted
   (espresso: `01, 1B, 02, 04`). With these rules aioecam rebuilds every one of
   the 61 stored beverage frames byte for byte **[measured, offline]**.
@@ -448,6 +450,14 @@ Measured on the Soul, profile 1: espresso `08=0, 01=40 ml, 1B=1, 02=4, 04=0,
 data has raw defaults outside the reported range (0 or 255) for travel mug,
 over-ice and custom slots, so keep them instead of rejecting the descriptor.
 
+Beverage ids are **not globally unique** **[app]**: the app resolves some
+numbers by model and protocol, for example 22 = tea or an old custom slot,
+25 = long black or rinsing, 26 = travel mug or descaling. Beverage ids, A2
+statistic ids and cloud property names are separate namespaces. The tag
+names, beverage enum, operation modes and model table (`MachinesModels.json`,
+template 1.510, 117 entries) are identical in app versions 4.2.3, 4.7.2 and
+4.9.6.
+
 **Complete read of the Soul [measured, 2026-10-19]:** 28 descriptors, 28
 recipes in each of the 5 profile slots, 5 priority lists, no invalid frame.
 The 28 beverage ids are exactly the ids of the app's `PD_SOUL` model template
@@ -496,6 +506,18 @@ Specific to LAN mode:
 | Standby command | ✅ | |
 | Wake command | ❌ once, ✅ once | The failure came after a long standby with an empty water tank; the success after 2 min of standby with a full tank. Not conclusive. |
 | New sessions after a **module restart** | ❌ | Module refuses LAN mode until it reaches the cloud (2.1, 2.2) |
+
+What the app does **[app]**: the Coffee Link app wakes the Soul with the
+same `0x84 02 01` frame as aioecam. It hands the frame to the Ayla SDK,
+which sends it over LAN when the LAN session is active, otherwise over BLE or
+the cloud. No separate cloud wake-up command and no "LAN failed, retry via
+cloud" step was found in the power path. So a wake that works in the app may
+silently have gone through the cloud. One difference from aioecam: when the
+app connects to a Soul it writes `device_connected` (Unix time, as for the
+write session in 7.5); aioecam's `power_on()` does not announce a session
+first. Whether a fresh announce makes a local wake after a long standby more
+reliable is **[open]** and needs a test with the machine's internet blocked
+and the cloud fallback off.
 
 Practical advice: verify every command by its effect on the monitor, and
 offer a cloud fallback for waking if available. Blocking the machine's
