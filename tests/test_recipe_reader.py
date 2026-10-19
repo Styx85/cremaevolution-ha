@@ -194,3 +194,131 @@ async def test_slow_valid_response_is_not_a_false_timeout(
     assert reader.result == "completed" and reader.received == 1
     assert not reader.errors and calls == [NAMES[0]]  # no retry/duplicate read
     assert not machine.received
+
+
+PASS_NAMES = tuple(f"d{i:03d}_rec_test" for i in range(1, 7))
+DESCRIPTOR = encode_value(Frame(RESPONSE, 0xB0, 0xF0, bytes.fromhex("01 01 0014 0028 00b4")))
+
+
+async def _pass_setup(hass, machine, monkeypatch):
+    monkeypatch.setattr(recipe_reader, "SOUL_PROPERTIES", PASS_NAMES)
+    for name in PASS_NAMES:
+        machine.device.properties[name] = DESCRIPTOR
+    entry = await setup(hass)
+    device = entry.runtime_data.device
+    original = device.link.read
+    calls: list[str] = []
+
+    async def counting(name, **kwargs):
+        if name in PASS_NAMES:
+            calls.append(name)
+        return await original(name, **kwargs)
+
+    monkeypatch.setattr(device.link, "read", counting)
+    return entry, entry.runtime_data.recipe_reader, calls
+
+
+async def test_next_press_resumes_the_pass(
+    hass: HomeAssistant, machine: FakeMachine, monkeypatch: pytest.MonkeyPatch
+):
+    entry, reader, calls = await _pass_setup(hass, machine, monkeypatch)
+    device = entry.runtime_data.device
+    busy = False
+    monkeypatch.setattr(device, "is_busy", lambda *a: busy)
+    read = device.link.read
+
+    async def busy_after_two(name, **kwargs):
+        nonlocal busy
+        result = await read(name, **kwargs)
+        busy = len(calls) >= 2  # e.g. someone starts a drink
+        return result
+
+    monkeypatch.setattr(device.link, "read", busy_after_two)
+    reader.start(hass, entry)
+    await reader.task
+    first = reader.snapshot()
+    assert first["result"] == "partial" and first["stop_reason"] == "machine_unavailable_or_busy"
+    progress = {k: first["pass"][k] for k in ("complete", "parts", "confirmed", "pending")}
+    assert progress == {"complete": False, "parts": 1, "confirmed": 2, "pending": 4}
+    assert first["pass"]["next_property"] == PASS_NAMES[2]
+
+    busy = False
+    monkeypatch.setattr(device.link, "read", read)
+    reader.start(hass, entry)
+    await reader.task
+    second = reader.snapshot()
+    assert calls == list(PASS_NAMES)  # no property read twice
+    assert second["result"] == "completed" and second["attempted"] == 4
+    assert second["pass"]["complete"] and second["pass"]["parts"] == 2
+    assert second["pass"]["started_at"] == first["pass"]["started_at"]
+    assert second["pass"]["finished_at"]
+
+    # a complete pass is not resumed: the next press deliberately starts over
+    reader.start(hass, entry)
+    await reader.task
+    third = reader.snapshot()
+    assert calls[len(PASS_NAMES) :] == list(PASS_NAMES)
+    assert third["pass"]["parts"] == 1 and third["pass"]["started_at"] != first["pass"]["started_at"]
+    assert not machine.received
+
+
+async def test_failed_property_is_retried_last_in_the_next_part(
+    hass: HomeAssistant, machine: FakeMachine, monkeypatch: pytest.MonkeyPatch
+):
+    from aioecam.exceptions import CommandTimeout
+
+    entry, reader, calls = await _pass_setup(hass, machine, monkeypatch)
+    read = entry.runtime_data.device.link.read
+    failed_once = set()
+
+    async def flaky(name, **kwargs):
+        if name in (PASS_NAMES[0], PASS_NAMES[3]) and name not in failed_once:
+            failed_once.add(name)
+            calls.append(name)
+            raise CommandTimeout("no answer")
+        return await read(name, **kwargs)
+
+    monkeypatch.setattr(entry.runtime_data.device.link, "read", flaky)
+    reader.start(hass, entry)
+    await reader.task
+    snap = reader.snapshot()
+    assert snap["result"] == "partial" and snap["pass"]["confirmed"] == 4
+    assert snap["pass"]["failed_pending"] == [PASS_NAMES[0], PASS_NAMES[3]]
+
+    reader.start(hass, entry)
+    await reader.task
+    snap = reader.snapshot()
+    assert calls[len(PASS_NAMES) :] == [PASS_NAMES[0], PASS_NAMES[3]]
+    assert snap["result"] == "completed" and snap["pass"]["complete"]
+    assert snap["pass"]["failed_pending"] == [] and snap["pass"]["late_answers"] == []
+
+
+async def test_late_answer_confirms_a_timed_out_property(
+    hass: HomeAssistant, machine: FakeMachine, monkeypatch: pytest.MonkeyPatch
+):
+    from aioecam.exceptions import CommandTimeout
+
+    entry, reader, calls = await _pass_setup(hass, machine, monkeypatch)
+    read = entry.runtime_data.device.link.read
+    late = PASS_NAMES[-1]
+
+    async def times_out(name, **kwargs):
+        if name == late:
+            calls.append(name)
+            raise CommandTimeout("answer only after the deadline")
+        return await read(name, **kwargs)
+
+    monkeypatch.setattr(entry.runtime_data.device.link, "read", times_out)
+    reader.start(hass, entry)
+    await reader.task
+    assert reader.snapshot()["pass"]["failed_pending"] == [late]
+
+    await machine.device.push(late, DESCRIPTOR)  # the machine answers after all
+    async with asyncio.timeout(3):
+        while not reader.snapshot()["pass"]["complete"]:
+            await asyncio.sleep(0.05)
+    snap = reader.snapshot()
+    assert snap["pass"]["late_answers"] == [late] and snap["pass"]["pending"] == 0
+    diag = await async_get_config_entry_diagnostics(hass, entry)
+    assert diag["recipe_read"]["pass"]["complete"]
+    assert not machine.received
