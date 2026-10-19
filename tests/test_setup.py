@@ -188,3 +188,20 @@ async def test_options_change_reloads(hass: HomeAssistant, machine: FakeMachine)
     await hass.async_block_till_done()
     assert entry.state is ConfigEntryState.LOADED
     assert entry.runtime_data is not before  # reloaded with the new options
+
+
+async def test_offline_module_state_follows_via_monitor_requests(
+    hass: HomeAssistant, machine: FakeMachine
+) -> None:
+    # Measured with the machine's internet blocked: the module publishes no
+    # changes; only a monitor request (0x75) yields a fresh frame, ~1-2 s later.
+    machine.publish_on_request_only = True
+    machine.publish_delay = 0.4
+    entry = await _setup(hass)
+    switch = _entity(hass, entry, "switch:power")
+    assert hass.states.get(switch).state == "off"
+    await machine._set(7)  # switched on at the display
+    await entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get(switch).state == "on"
+    assert machine.monitor_requests >= 1

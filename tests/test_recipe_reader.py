@@ -20,6 +20,11 @@ from custom_components.cremalink_ha.diagnostics import (
 from tests.conftest import V2_DATA
 from tests.fakes.fake_machine import FakeMachine
 
+def reader_commands(machine: FakeMachine) -> list:
+    """ECAM frames sent to the machine, without the coordinator's monitor requests."""
+    return [f for f in machine.received if not (f.opcode == 0x75 and not f.payload)]
+
+
 NAMES = (
     "d001_rec_espresso",
     "d039_1_rec_espresso",
@@ -67,7 +72,7 @@ async def test_button_opt_in_and_reads_without_writing(
         registry.async_get(entity_id).disabled_by
         is er.RegistryEntryDisabler.INTEGRATION
     )
-    assert reader.result == "not_started" and not machine.received
+    assert reader.result == "not_started" and not reader_commands(machine)
     registry.async_update_entity(entity_id, disabled_by=None)
     # Reload with the registry preference retained, then press the actual HA button.
     with (
@@ -90,7 +95,7 @@ async def test_button_opt_in_and_reads_without_writing(
     assert diag["recipe_read"]["valid_catalog_entries"] == 3
     assert diag["recipe_catalog"]["property_count"] == 3
     assert diag["identity"]["firmware"] == "test firmware"
-    assert not machine.received  # GETs, not ECAM/session writes
+    assert not reader_commands(machine)  # GETs, not ECAM/session writes
 
 
 async def test_missing_properties_stop_after_three_failures(
@@ -143,7 +148,7 @@ async def test_reader_cancelled_on_entry_unload(
     await asyncio.wait_for(started.wait(), 2)
     assert await hass.config_entries.async_unload(entry.entry_id)
     assert reader.result == "cancelled" and not reader.running
-    assert not machine.received
+    assert not reader_commands(machine)
 
 
 async def test_total_duration_is_bounded(
@@ -193,7 +198,7 @@ async def test_slow_valid_response_is_not_a_false_timeout(
     await asyncio.wait_for(reader.task, 6)
     assert reader.result == "completed" and reader.received == 1
     assert not reader.errors and calls == [NAMES[0]]  # no retry/duplicate read
-    assert not machine.received
+    assert not reader_commands(machine)
 
 
 PASS_NAMES = tuple(f"d{i:03d}_rec_test" for i in range(1, 7))
@@ -259,7 +264,7 @@ async def test_next_press_resumes_the_pass(
     third = reader.snapshot()
     assert calls[len(PASS_NAMES) :] == list(PASS_NAMES)
     assert third["pass"]["parts"] == 1 and third["pass"]["started_at"] != first["pass"]["started_at"]
-    assert not machine.received
+    assert not reader_commands(machine)
 
 
 async def test_failed_property_is_retried_last_in_the_next_part(
@@ -321,4 +326,4 @@ async def test_late_answer_confirms_a_timed_out_property(
     assert snap["pass"]["late_answers"] == [late] and snap["pass"]["pending"] == 0
     diag = await async_get_config_entry_diagnostics(hass, entry)
     assert diag["recipe_read"]["pass"]["complete"]
-    assert not machine.received
+    assert not reader_commands(machine)

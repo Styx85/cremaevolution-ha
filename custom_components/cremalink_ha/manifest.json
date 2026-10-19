@@ -14,7 +14,7 @@
     "aioecam"
   ],
   "requirements": [
-    "aioecam==0.1.0b8"
+    "aioecam==0.1.0b9"
   ],
-  "version": "0.3.0b11"
+  "version": "0.3.0b12"
 }
