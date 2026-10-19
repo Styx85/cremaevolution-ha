@@ -415,7 +415,7 @@ Confirm a write by the acknowledgement **and** by reading the value back.
 
 | Parameter | Meaning | Values |
 |---|---|---|
-| `0x003E` | auto-off | 0 = 15 min, 1 = 30 min **[measured]**; higher values: lodzen 2 = 1 h, 3 = 3 h, Arbuzov 2 = 1 h, 3 = 2 h, 4 = 3 h **[reported, conflicting]** |
+| `0x003E` | auto-off | 0 = 15 min, 1 = 30 min **[measured]**; Wi-Fi machines in the app: 2 = 1 h, 3 = 3 h **[app]** (same as lodzen); the app's non-Wi-Fi branch uses 2 = 1 h, 3 = 2 h, 4 = 3 h (same as Arbuzov), which explains the conflicting sources |
 | `0x0032` | water hardness | 0–3 = displayed level 1–4 (read 2 = level 3) |
 | `0x003F` | bit mask | 0x04 sounds, 0x08 cup light, 0x10 energy saving, 0x20 cup warmer; read-modify-write **[reported]** |
 | `0x003D` | water temperature | **[reported]** |
@@ -519,6 +519,10 @@ first. Whether a fresh announce makes a local wake after a long standby more
 reliable is **[open]** and needs a test with the machine's internet blocked
 and the cloud fallback off.
 
+The Ayla SDK can acknowledge a datapoint per command id (ACK/NAK) **[app]**.
+Such an acknowledgement only shows that the module took the command, not that
+the machine woke up or brewed; confirm by a monitor change.
+
 Practical advice: verify every command by its effect on the monitor, and
 offer a cloud fallback for waking if available. Blocking the machine's
 internet access is possible, but the module then cannot recover LAN mode by
@@ -530,7 +534,7 @@ itself after a power cut.
   request needed compared with plain reads (section 6)?
 - Does waking after a *long* standby really require the cloud?
 - Meaning of the `action` codes, and the exact meaning of `0x1B` INDEX_LENGTH values such as 4.
-- Auto-off values 2 and above (conflicting sources, 7.6).
+- Auto-off 2 = 1 h and 3 = 3 h on the Soul: app-backed (7.6), not yet read back after setting them on the display.
 - Write-session lifetime and renewal; why a repeated recipe request is not
   republished (5).
 - Is `local_reg` really limited to one client on this firmware?
