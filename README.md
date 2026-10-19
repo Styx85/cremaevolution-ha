@@ -207,6 +207,7 @@ with `default_in_range: false`, rather than losing the entire descriptor. This
 flag is diagnostic and does not authorize those values for brewing.
 
 
+
 ### Settings, profile and custom amounts (0.3.0b7)
 
 - **Auto-off** and **water hardness** selects (configuration category). They
@@ -235,3 +236,23 @@ flag is diagnostic and does not authorize those values for brewing.
 Verified on the ECAM610.75 through the library (auto-off write and restore,
 profile 1 → 2 → 1, 100 ml hot water); the Home Assistant entities and the
 service themselves are tested against the simulated machine.
+
+### Recipe reads continue where they stopped (unreleased)
+
+A full read of the 177 properties takes longer than the 120-second budget of
+one press (the first complete live run reached 128). A press now reads one
+bounded *part* of a *pass*; the next press continues with the properties not
+yet confirmed, never-tried ones first and failed ones last, so the priority
+lists and identity properties at the end are reached. Budget, per-property
+deadline, pacing and the three-failure stop are unchanged, and there are still
+no background retries.
+
+- A property counts as confirmed only after a successful read with a valid
+  catalogue value, or when a valid answer arrives late (after its read timed
+  out but within the same pass).
+- `recipe_read` in the diagnostics keeps the counters of the last part and adds
+  `pass`: start/end, number of parts, confirmed and pending properties, late
+  answers, failed properties still pending and the next property.
+- Once the pass is complete, the next press deliberately starts a fresh pass.
+- The pass is kept in memory only: restarting Home Assistant or reloading the
+  integration starts a new pass from the first property.
