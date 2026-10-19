@@ -168,3 +168,21 @@ async def test_brew_custom_has_no_temperature_field(hass: HomeAssistant, machine
             blocking=True,
         )
     assert not any(f.opcode == 0x83 for f in machine.received)
+
+
+
+async def test_brew_custom_refuses_pre_ground_intensity(hass: HomeAssistant, machine: FakeMachine) -> None:
+    # TASTE 0 means pre-ground coffee in the app; milk is tenths of a second
+    import voluptuous as vol
+
+    machine.recipes[(1, 1)] = D039_RECIPE_ESPRESSO_P1
+    entry = await _setup(hass)
+    for extra in ({"intensity": 0}, {"milk": 2000}):
+        with pytest.raises(vol.Invalid):
+            await hass.services.async_call(
+                DOMAIN,
+                "brew_custom",
+                {"device_id": _device_id(hass, entry), "beverage": "espresso", **extra},
+                blocking=True,
+            )
+    assert not any(f.opcode == 0x83 for f in machine.received)

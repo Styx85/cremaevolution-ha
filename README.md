@@ -49,7 +49,7 @@ probe tools used for the measurements are in [tools/](tools/).
 | Device API with confirmed commands, A2 statistics (verified live: on, espresso, off, full A2 table) | ✅ done |
 | Cloud onboarding and wake fallback (verified with a real account) | ✅ done |
 | Home Assistant integration without add-on, migration | ✅ done (tested against a real HA core) |
-| Beta releases | ✅ available; 0.3.0b9 uses aioecam 0.1.0b6 |
+| Beta releases | ✅ available; 0.3.0b10 uses aioecam 0.1.0b6 |
 | 24 h soak test | ⏳ planned |
 
 ### Hardware validation and beta scope
@@ -264,3 +264,16 @@ that wrote recipe tag `0x1B`. A static analysis of the Coffee Link app 4.9.6
 shows that this tag is `INDEX_LENGTH` (a size index), not a temperature; the
 app's temperatures are tags `0x00` and `0x0D`. The field is removed. Calls that
 still pass `temperature` are rejected. `intensity` is the app's `TASTE` step.
+
+### Milk and strength values (0.3.0b10)
+
+From a closer look at the Coffee Link app 4.9.6:
+
+- `milk` in `cremalink_ha.brew_custom` is a **duration in tenths of a second**
+  (the app shows 210 as 21 s), not millilitres. Allowed: 30–1080, the range
+  of the Soul's own recipe descriptors.
+- `intensity` is the app's TASTE step 1 (extra mild) to 5 (extra strong).
+  `0` means pre-ground coffee in the app and is no longer accepted.
+- The last byte of a brew command is the profile plus an operation mode
+  (2 = prepare); earlier notes called it an accessory code. Custom amounts
+  always use "prepare", so they never change a stored recipe.
