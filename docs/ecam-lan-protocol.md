@@ -228,11 +228,20 @@ beverage id), never by property name. Two quirks seen on the Soul:
   after a monitor request returned the same frozen frame, timestamp included.
   Its tank and accessory bits describe some earlier moment, not the present.
   Settings and recipes, in contrast, *are* readable in standby.
-- **[open]** Pushes: in raw-probe sessions the monitor changed about every
-  second while waking, more often than it was read; in aioecam sessions every
-  monitor datapoint answered a read. Whether changes are ever pushed
-  unsolicited, and whether the explicit monitor request is needed at all
-  compared with plain property reads, is not settled. **Poll while awake.**
+- **Without internet the module publishes no changes [measured,
+  2026-10-19].** With the machine's internet blocked, plain reads kept
+  returning the frame from before a wake-up or switch-off; only a `0x75`
+  monitor request made the module publish the current state, about 1–2 s
+  after it fetched the request (details in section 9). **So poll with
+  monitor requests and wait for a newer payload timestamp**, not with plain
+  reads. **[open]** whether the module pushes changes by itself when it can
+  reach the cloud (raw-probe sessions on 2026-10-18 saw the monitor change
+  about every second while waking).
+- **[app]** Over Wi-Fi the Coffee Link app sends no monitor requests: it
+  reads `d302_monitor` and reacts to the Ayla SDK's property-change
+  notifications (locally or via the cloud), with a 60 s monitor timer. The
+  monitor-mode frames (`0x60`, `0x70`, `0x75`) are only built in its
+  Bluetooth path. Offline, the app would therefore not see changes either.
 
 ## 7. ECAM frames
 
@@ -516,9 +525,9 @@ cloud" step was found in the power path. So a wake that works in the app may
 silently have gone through the cloud. One difference from aioecam: when the
 app connects to a Soul it writes `device_connected` (Unix time, as for the
 write session in 7.5); aioecam's `power_on()` does not announce a session
-first. Whether a fresh announce makes a local wake after a long standby more
-reliable is **[open]** and needs a test with the machine's internet blocked
-and the cloud fallback off.
+first. Tested 2026-10-19 with the internet blocked: the announce is **not
+needed**; plain, announce-first and `?dsn=` sessions all woke the machine
+within about 2 s.
 
 The Ayla SDK can acknowledge a datapoint per command id (ACK/NAK) **[app]**.
 Such an acknowledgement only shows that the module took the command, not that
@@ -537,9 +546,11 @@ itself after a power cut.
 
 ## 10. Open questions
 
-- Are monitor changes ever pushed unsolicited, and is the explicit monitor
-  request needed compared with plain reads (section 6)?
-- Does waking after a *long* standby really require the cloud?
+- Does the module push monitor changes by itself when it can reach the
+  cloud? (Without internet it does not; section 6.)
+- Offline wake after an overnight standby (tested so far: 5–13 min), after an
+  HA restart during standby, and after a module restart without internet
+  (expected to fail at registration, 2.2).
 - Meaning of the `action` codes, and the exact meaning of `0x1B` INDEX_LENGTH values such as 4.
 - Auto-off 2 = 1 h and 3 = 3 h on the Soul: app-backed (7.6), not yet read back after setting them on the display.
 - Write-session lifetime and renewal; why a repeated recipe request is not
