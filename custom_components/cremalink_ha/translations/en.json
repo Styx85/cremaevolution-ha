@@ -276,6 +276,28 @@
       "power": {
         "name": "Power"
       }
+    },
+    "select": {
+      "auto_off": {
+        "name": "Auto-off",
+        "state": {
+          "15_min": "15 min",
+          "30_min": "30 min",
+          "1_h": "1 h"
+        }
+      },
+      "water_hardness": {
+        "name": "Water hardness",
+        "state": {
+          "level_1": "Level 1",
+          "level_2": "Level 2",
+          "level_3": "Level 3",
+          "level_4": "Level 4"
+        }
+      },
+      "profile": {
+        "name": "User profile"
+      }
     }
   },
   "options": {
@@ -287,6 +309,68 @@
           "lan_port": "Port for the machine's callbacks",
           "advertise_ip": "Address announced to the machine (optional)"
         }
+      }
+    }
+  },
+  "services": {
+    "brew_custom": {
+      "name": "Brew with custom amounts",
+      "description": "Brews a beverage with the machine's own recipe for the chosen profile and changes only the amounts you set. The machine must be ready; parameters the recipe does not have are refused.",
+      "fields": {
+        "device_id": {
+          "name": "Coffee machine",
+          "description": "The machine to use."
+        },
+        "beverage": {
+          "name": "Beverage",
+          "description": "Stored beverage to start."
+        },
+        "profile": {
+          "name": "Profile",
+          "description": "Profile whose recipe is used (1-5)."
+        },
+        "coffee_ml": {
+          "name": "Coffee",
+          "description": "Coffee amount in ml."
+        },
+        "water_ml": {
+          "name": "Water",
+          "description": "Water amount in ml (e.g. hot water, americano)."
+        },
+        "milk": {
+          "name": "Milk",
+          "description": "Milk amount as raw machine value."
+        },
+        "temperature": {
+          "name": "Temperature",
+          "description": "Raw temperature step 0-3, not degrees."
+        },
+        "intensity": {
+          "name": "Intensity",
+          "description": "Raw strength step 0-5."
+        }
+      }
+    }
+  },
+  "selector": {
+    "beverage": {
+      "options": {
+        "americano": "Americano",
+        "caffe_latte": "Caffé Latte",
+        "cappuccino": "Cappuccino",
+        "cappuccino_mix": "Cappuccino Mix",
+        "cappuccino_plus": "Cappuccino+",
+        "coffee": "Coffee",
+        "cortado": "Cortado",
+        "double_espresso": "Double Espresso",
+        "espresso": "Espresso",
+        "espresso_macchiato": "Espresso Macchiato",
+        "espresso_soul": "Espresso Soul",
+        "flat_white": "Flat White",
+        "hot_milk": "Hot Milk",
+        "hot_water": "Hot Water",
+        "latte_macchiato": "Latte Macchiato",
+        "long_coffee": "Long Coffee"
       }
     }
   }

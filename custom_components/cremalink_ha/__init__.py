@@ -20,7 +20,9 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.typing import ConfigType
 
 from .const import (
     DOMAIN,
@@ -43,13 +45,29 @@ from .const import (
 from .coordinator import EcamCoordinator
 from .recipe_reader import RecipeReader, supported as recipe_reads_supported
 from .runtime import RuntimeData, async_acquire_server, async_release_server
+from .services import async_setup_services
+from .settings_coordinator import SettingsCoordinator, settings_supported
 from .statistics_coordinator import StatisticsCoordinator, statistics_supported
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = [Platform.SWITCH, Platform.BUTTON, Platform.SENSOR, Platform.BINARY_SENSOR]
+PLATFORMS = [
+    Platform.SWITCH,
+    Platform.BUTTON,
+    Platform.SENSOR,
+    Platform.BINARY_SENSOR,
+    Platform.SELECT,
+]
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 type CremalinkConfigEntry = ConfigEntry[RuntimeData]
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Register the integration's services once, independent of entries."""
+    async_setup_services(hass)
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: CremalinkConfigEntry) -> bool:
@@ -111,11 +129,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: CremalinkConfigEntry) ->
             hass, statistics.async_refresh(), "cremalink initial statistics"
         )
 
+    settings = None
+    if settings_supported(device):
+        settings = SettingsCoordinator(hass, device)
+        # Readable in standby; do not hold up setup.
+        entry.async_create_background_task(
+            hass, settings.async_refresh(), "cremalink initial settings"
+        )
+
     entry.runtime_data = RuntimeData(
         device=device,
         link=link,
         coordinator=coordinator,
         statistics_coordinator=statistics,
+        settings_coordinator=settings,
         cloud=cloud,
         recipe_reader=RecipeReader(device, coordinator.async_update_listeners)
         if recipe_reads_supported(device) else None,

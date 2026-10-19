@@ -37,7 +37,11 @@ async def test_passive_catalog_and_freshness_export(hass: HomeAssistant, machine
     entry = MockConfigEntry(domain=DOMAIN, version=2, title="Soul", data=V2_DATA,
                             unique_id=V2_DATA["dsn"])
     entry.add_to_hass(hass)
-    with patch("custom_components.cremalink_ha.statistics_supported", return_value=False):
+    with (
+        patch("custom_components.cremalink_ha.statistics_supported", return_value=False),
+        # these tests assert that no ECAM command is sent; settings polling would read 0x95
+        patch("custom_components.cremalink_ha.settings_supported", return_value=False),
+    ):
         assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
     runtime = entry.runtime_data
