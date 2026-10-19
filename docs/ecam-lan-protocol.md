@@ -7,9 +7,12 @@ building a client can reuse them.
 - **Hardware basis:** PrimaDonna Soul ECAM610.75.MB, Ayla module reporting
   `software_version` "Millcore_demo 2.0.0 Jun 18 2020", `mcu_host_version`
   2.0.0, `oem_host_version` v1.4.
-- **Date:** October 2026.
+- **Date:** October 2026 (updated 2026-10-19 with the M7 findings: settings,
+  profiles, recipes, custom beverages, monitor freshness).
 - **Tools:** [`tools/lan_probe.py`](../tools/lan_probe.py) (raw HTTP on both
-  sides), plus the async library *aioecam* built on these notes.
+  sides), plus the async library [aioecam](https://github.com/Styx85/aioecam)
+  built on these notes. Raw measurement logs for the M7 checks are in its
+  [`docs/m7-protocol.md`](https://github.com/Styx85/aioecam/blob/main/docs/m7-protocol.md).
 - **Confidence labels:** **[measured]** = observed on the machine above with
   the numbers given; **[reported]** = from other projects, not reproduced
   here; **[open]** = unresolved.
@@ -178,6 +181,29 @@ cremalink treats *every* datapoint as the monitor value. That is why its
 status sometimes shows a timestamp or command echo and the HA entities go
 unknown or look stuck.
 
+**Answers do not all come back on `data_response` [measured].** The machine
+answers some requests by republishing a property of its own:
+
+| Request | Opcode | Answer arrives as |
+|---|---|---|
+| Statistics page | `0xA2` | `data_response` |
+| Read a setting | `0x95` | the setting's property, e.g. `d282_mchn_sett_aoff` |
+| Read a recipe | `0xA6` | the recipe's property, e.g. `d039_1_rec_espresso` |
+| Select a profile | `0xA9` | `data_response`, but sometimes only retrievable by reading it |
+
+So decode every frame-carrying datapoint, keep only verified `0xD0` answers
+and match them by opcode plus their identifiers (parameter id, profile slot,
+beverage id), never by property name. Two quirks seen on the Soul:
+
+- After selecting slot 2, the first read of `data_response` returned the
+  *previous* acknowledgement (`d007a9f001003b3c`) before `d007a9f002006e6f`.
+  Ignore acknowledgements for other slots instead of treating them as a
+  refusal.
+- A second identical recipe request got no new publication. Remember which
+  property carried the answer and read it after about 0.5 s without an
+  answer. Cache the property name, not the value; why the second publication
+  was missing is **[open]**.
+
 ## 6. Session behaviour [measured]
 
 - Between notifications the machine is silent. Liveness can be checked
@@ -193,12 +219,19 @@ unknown or look stuck.
 - **[reported]** (FiveElements) The module keeps a single `local_reg`
   registration. A second LAN client takes it over. Not reproduced here, but
   it is consistent with "only one integration at a time".
-- **[open]** Monitor pushes: in raw-probe sessions the monitor changed about
-  every second while the machine was waking, more often than it was read. In
-  aioecam sessions every monitor datapoint was the answer to a read (4 reads →
-  4 datapoints) and nothing changed between reads. Until this is understood,
-  **poll the monitor** while the machine is awake (every 2–3 s) instead of
-  relying on pushes.
+- **Polling sees physical changes while the machine is awake [measured].**
+  Alternating plain monitor reads and explicit monitor requests (`0D 05 75
+  0F`, section 7.3) every 2–3 s showed water-tank removal/replacement and
+  milk-carafe attach/detach within seconds (table in 7.3).
+- **In standby nothing is fresh [measured].** Both a plain read and a read
+  after a monitor request returned the same frozen frame, timestamp included.
+  Its tank and accessory bits describe some earlier moment, not the present.
+  Settings and recipes, in contrast, *are* readable in standby.
+- **[open]** Pushes: in raw-probe sessions the monitor changed about every
+  second while waking, more often than it was read; in aioecam sessions every
+  monitor datapoint answered a read. Whether changes are ever pushed
+  unsolicited, and whether the explicit monitor request is needed at all
+  compared with plain property reads, is not settled. **Poll while awake.**
 
 ## 7. ECAM frames
 
@@ -229,8 +262,14 @@ dir | len | opcode | flags | payload … | crc_hi | crc_lo
 | `0D 07 84 0F 01 01 00 41` | standby |
 | `0D 07 84 0F 03 02 56 40` | refresh app id (official app) |
 
-A response with opcode `0xA9` (`D0 07 A9 F0 01 00 …`) appeared while the app
-was active **[open]**.
+The `0xA9` answer `D0 07 A9 F0 01 00 3B 3C` seen while the official app woke
+the machine is the **profile-select acknowledgement** for profile 1 (section
+7.7): the app selects a profile when it connects. *(Resolved; previously
+listed as open.)*
+
+Standby `84 0F 01 01` worked on the Soul. Arbuzov's BLE integration
+**[reported]** found that it does not work on every model (Dinamica Plus
+ECAM370.95) and only enables it for known product codes.
 
 ### 7.3 Monitor (opcode `0x75`, 13-byte payload)
 
@@ -257,15 +296,132 @@ Consequences:
 - **While the machine sleeps, the module returns the last monitor frame byte
   for byte, timestamp included.** An unchanged monitor does not mean a dead
   connection.
-- `alarms[0]` bit 0 was **set with a freshly filled water tank**. On this
-  machine it is not "water tank empty" (also cremalink#249).
-- Accessory values seen: `0` none, `4` milk carafe in its clean position.
+- **Correction:** an earlier version of this document said `alarms[0]` bit 0
+  was "set with a freshly filled water tank" and therefore not a tank signal.
+  That frame was the **frozen standby frame** (section 6). While awake the
+  tank bits behave as expected (table below). Treat any tank or accessory
+  value from a sleeping machine as stale.
+- Ask for a fresh frame with **`0D 05 75 0F DA 25`** (opcode `0x75`, flag
+  `0x0F`, no payload). Also documented by longshot and DlghIoT (§4.1)
+  **[reported]**; used here while awake **[measured]**.
+
+Physical changes while awake, ECAM610.75 **[measured]** (switch word = payload
+bytes 1–2, alarm word = payload bytes 3–4 and 8–9, both little-endian; bit
+names from longshot/Arbuzov **[reported]**):
+
+| Action | accessory | switches | alarms | Decoded |
+|---|---|---|---|---|
+| Frozen standby frame | `4` | `4002` | `01000000` | stale (water level low, tank empty, milk clean) |
+| Water tank removed | `0` | `1000` | `00200000` | switch 4 *WaterTankAbsent*, alarm 13 *TankInPosition* |
+| Water tank put back | `0` | `0000` | `00000000` | cleared |
+| Milk carafe attached | `2` | `0001` | `00000000` | accessory *latte_crema_hot*, switch 8 *IfdCaraffe* |
+| Milk carafe removed | `0` | `0000` | `00000000` | cleared |
+
+Reported names for the remaining bits (longshot, Arbuzov; not all checked
+here). Switches: 0 water spout, 1 motor up, 2 motor down, 3 coffee waste
+container, 5 knob, 6 water level low, 7 coffee jug, 9 chocolate tank, 10 clean
+knob, 13 door opened, 14 pre-ground door. Alarms: 0 empty water tank, 1 waste
+container full, 2 descale, 3 replace water filter, 4 ground too fine, 5 beans
+empty, 6 service, 7 heater probe, 8 too much coffee, 9 infuser motor, 10
+steamer probe, 11 empty drip tray, 12 hydraulic circuit, 14 clean knob, 16
+tank too full, 17 bean hopper absent, 18 drip grid, 19 infuser not in place,
+20 not enough coffee, 21–27 module/grinder/fan/board faults. Eletta switch
+bits 7–15 differ (DlghIoT).
+
+Status values reported elsewhere: 3 heating, 4 descaling, 5 steam, 6
+recovery/brewing, 8 rinsing, 10 milk, 11 hot water, 12 milk cleaning, 14
+changing filter, 16 chocolate. **[measured]** here: 0, 1, 2, 7 and 11 (a
+custom hot-water command dispensed with status 11). The `action` codes
+(1, 2, 4–9, 11) are named by no source **[open]**.
+
+Accessory values: `0` none, `2` hot milk carafe, `4` milk carafe in its
+clean position **[measured]**; 1 hot-water spout, 3 chocolate, 6 cold milk,
+7 cold milk clean **[reported]**. On the Soul hot water comes from the central
+outlet; accessory `0` must not block it.
 
 ### 7.4 Beverages (opcode `0x83`)
 
-The stored beverage frames from the cremalink device maps work as they are.
-The meaning of the ingredient bytes is not fully established **[open]**, so
-parametric beverages are not documented here.
+```
+0D LEN 83 F0 <beverage> <action> <recipe TLV…> <(profile_slot << 2) | accessory_bits> <crc>
+```
+
+- `action`: `01` start, `02` stop (longshot also lists next step, stop
+  program, advanced/programming modes **[reported]**).
+- Recipe parameters are TLVs: tag, then a value of **2 bytes** for tags
+  `0x01` coffee ml, `0x09` milk, `0x0F` water ml, otherwise 1 byte. Known
+  1-byte tags: `0x1B` temperature (raw 0–3), `0x02` intensity/taste (raw 0–5),
+  `0x08`, `0x04`, `0x19`, `0x1C`.
+- The app sends only tags `< 23` plus `27, 28, 31, 33, 38, 39`, and drops
+  `0x08` (APK rule `E0`, via lodzen **[reported]**).
+- **Keep the machine's tag order.** The Soul's own frames are not sorted
+  (espresso: `01, 1B, 02, 04`). With these rules aioecam rebuilds every one of
+  the 61 stored beverage frames byte for byte **[measured, offline]**.
+- Take the trailer's accessory bits from the stored command. They are not the
+  monitor's accessory enum.
+- **Custom amounts work [measured]:** reading the hot-water recipe (profile
+  1: water 250 ml, temperature 1) and sending it with water 100 ml,
+  `0d0d83f010010f00641b0106e5e1`, dispensed about 100 ml (status 11, back to
+  ready after 43 s). The saved 250 ml recipe was unchanged afterwards.
+
+### 7.5 Write session (`device_connected`)
+
+Writes that change machine settings (`0x90`) or the profile (`0xA9`) only
+commit inside an announced session. On the Soul the announce is a write of the
+**bare Unix timestamp** as a string to `device_connected`, without the
+newline that `data_request` values carry. lodzen **[reported]** a lifetime of
+about 300 s; refresh after 240 s like the app. Lifetime and renewal were not
+measured here. Eletta machines instead use the `0xE8` handshake
+(`0D 06 E8 F0 00 ED 7C`) plus app-id registration on `app_device_connected`
+(ts + app id; DlghIoT **[reported]**); not implemented or tested.
+
+Power and beverage commands did not need the announce **[measured]**.
+
+### 7.6 Settings (`0x95` read, `0x90` write)
+
+```
+read:  0D 07 95 F0 <param:2>                → answer 95 F0 <param:2> <u32> [descriptor tail]
+write: 0D 0B 90 <flag> <param:2> <value:4>  → answer 90 <flag> <param:2> <status: 00 = ok>
+```
+
+The write flag is `0x0F` for parameters below 1000, else `0xF0` (app rule).
+Confirm a write by the acknowledgement **and** by reading the value back.
+
+| Parameter | Meaning | Values |
+|---|---|---|
+| `0x003E` | auto-off | 0 = 15 min, 1 = 30 min **[measured]**; higher values: lodzen 2 = 1 h, 3 = 3 h, Arbuzov 2 = 1 h, 3 = 2 h, 4 = 3 h **[reported, conflicting]** |
+| `0x0032` | water hardness | 0–3 = displayed level 1–4 (read 2 = level 3) |
+| `0x003F` | bit mask | 0x04 sounds, 0x08 cup light, 0x10 energy saving, 0x20 cup warmer; read-modify-write **[reported]** |
+| `0x003D` | water temperature | **[reported]** |
+
+Measured: auto-off read `0`, written `1` and read back, restored to `0`. Both
+reads also worked in standby.
+
+### 7.7 User profiles (`0xA4` names, `0xA9` select)
+
+```
+names:  0D 07 A4 F0 <first> <count>   → A4 F0 <first> <last> <entries…>
+select: 0D 06 A9 F0 <slot>            → D0 07 A9 F0 <slot> <status: 00 = ok>
+```
+
+Name entries are 20 bytes UTF-16BE plus an icon byte (22 bytes on Eletta,
+with a mug byte). Empty slots are padding. The Soul reported three profiles;
+names are only answered **while awake** (Arbuzov **[reported]**, consistent
+here). The name list does not say which profile is active. Selecting
+`1 → 2 → 1` was acknowledged and confirmed on the display **[measured]**.
+
+### 7.8 Recipes (`0xA6`)
+
+```
+0D 07 A6 F0 <slot> <beverage>   → A6 F0 <slot> <beverage> <TLV…>
+```
+
+Recipes are scoped to a profile slot. The answer comes back as the recipe's
+own property (`d039_1_rec_espresso` = profile 1 espresso), also in standby.
+Measured on the Soul, profile 1: espresso `08=0, 01=40 ml, 1B=1, 02=4, 04=0,
+19=1`; hot water `19=1, 0F=250 ml, 1B=1`. The factory descriptor `0xB0`
+(`0D 06 B0 F0 <beverage>`) carries min/default/max triples per tag; real Soul
+data has raw defaults outside the reported range (0 or 255) for travel mug,
+over-ice and custom slots, so keep them instead of rejecting the descriptor.
 
 ## 8. A2 statistics over LAN [measured]
 
@@ -278,6 +434,10 @@ Specific to LAN mode:
   filtering against stale cloud values.
 - The complete table (62 values, 7 pages of up to 10) was read in **7 s**,
   without timeouts, **also while the machine was in standby**.
+- **Hot water is A2 id 3019 on the Soul [measured]**, not 3018. A 100 ml
+  hot-water command raised 3019 from 2 to 3 while 3018 stayed 0. The inherited
+  mapping (3018 hot water, 3019 tea) was wrong for this machine, which has no
+  tea function. 3018 stays unknown/raw.
 
 ## 9. Without internet [measured, small sample]
 
@@ -295,11 +455,15 @@ itself after a power cut.
 
 ## 10. Open questions
 
-- What makes the machine push monitor changes in some sessions and not in
-  others (section 6)?
+- Are monitor changes ever pushed unsolicited, and is the explicit monitor
+  request needed compared with plain reads (section 6)?
 - Does waking after a *long* standby really require the cloud?
-- Meaning of the `0xA9` response and of the beverage ingredient bytes.
+- Meaning of the `action` codes and of recipe tags `0x04`, `0x08`, `0x19`.
+- Auto-off values 2 and above (conflicting sources, 7.6).
+- Write-session lifetime and renewal; why a repeated recipe request is not
+  republished (5).
 - Is `local_reg` really limited to one client on this firmware?
+- Everything beyond the Soul: Eletta sessions, other model families.
 
 ## 11. Related work
 
@@ -310,5 +474,19 @@ itself after a power cut.
   and LAN-mode notes from the Android app.
 - [delonghi-coffeelink-local](https://github.com/FiveElements/delonghi-coffeelink-local):
   Node.js LAN server, single-slot and HTTP framing observations.
+- [lodzen/cremalink](https://github.com/lodzen/cremalink) (AGPL-3.0): ECAM
+  command layer reverse-engineered from the Coffee Link app plus Soul
+  captures; source of the profile, settings, recipe and session details
+  ported into aioecam. Discussion of the POST/PUT finding:
+  [lodzen/cremalink#4](https://github.com/lodzen/cremalink/issues/4).
+- [longshot](https://github.com/mmastrac/longshot) (Apache-2.0/MIT, BLE):
+  request ids, monitor layout and bit names, ingredient ids, beverage ids.
+- [home_assistant_delonghi_primadonna](https://github.com/Arbuzov/home_assistant_delonghi_primadonna)
+  (Apache-2.0, BLE): 32-bit alarms, settings parameters, profile select.
+- [DlghIoT](https://framagit.org/mattgk/dlghiot) (Apache-2.0, cloud, Eletta):
+  monitor refresh request, Eletta session and switch bits.
+- [ECAMpy](https://github.com/duckwc/ECAMpy) and
+  [delonghi-coffee-link-python](https://github.com/otto-dev/delonghi-coffee-link-python)
+  (no license; facts only).
 - Discussions in cremalink#212 and cremalink-ha#65 (wake-up and cloud
   dependency reports).
