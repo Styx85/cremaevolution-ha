@@ -339,11 +339,11 @@
         },
         "milk": {
           "name": "Milch",
-          "description": "Milchmenge als Rohwert der Maschine."
+          "description": "Milchdauer in Zehntelsekunden, wie die App sie speichert (210 = 21 s); keine Milliliter."
         },
         "intensity": {
           "name": "Intensität",
-          "description": "Aroma-/Stärkestufe 0-5 (Rohwert, Parameter TASTE der App)."
+          "description": "Aroma-/Stärkestufe 1 (extra mild) bis 5 (extra stark), Parameter TASTE der App."
         }
       }
     }

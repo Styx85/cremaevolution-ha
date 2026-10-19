@@ -51,11 +51,11 @@ brew_custom:
     milk:
       selector:
         number:
-          min: 0
-          max: 1000
+          min: 30
+          max: 1080
           mode: box
     intensity:
       selector:
         number:
-          min: 0
+          min: 1
           max: 5

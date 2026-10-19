@@ -32,13 +32,13 @@ ATTR_BEVERAGE = "beverage"
 ATTR_PROFILE = "profile"
 
 # Service field -> recipe tag, with conservative bounds. Intensity is the
-# app's raw TASTE step (0-5). There is deliberately no temperature field: tag
+# app's raw TASTE step 1-5; milk is a duration in tenths of a second. There is deliberately no temperature field: tag
 # 0x1B, once thought to be temperature, is the app's INDEX_LENGTH.
 AMOUNTS: dict[str, tuple[int, int, int]] = {
     "coffee_ml": (TAG_COFFEE_ML, 15, 250),
     "water_ml": (TAG_WATER_ML, 20, 420),  # hot water/tea descriptors on the Soul
-    "milk": (TAG_MILK, 0, 1000),
-    "intensity": (TAG_INTENSITY, 0, 5),
+    "milk": (TAG_MILK, 30, 1080),  # tenths of a second (app), Soul descriptors
+    "intensity": (TAG_INTENSITY, 1, 5),  # app TASTE; 0 would mean pre-ground coffee
 }
 
 BREW_CUSTOM_SCHEMA = vol.Schema(

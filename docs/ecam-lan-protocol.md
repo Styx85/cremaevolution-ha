@@ -343,7 +343,7 @@ outlet; accessory `0` must not block it.
 ### 7.4 Beverages (opcode `0x83`)
 
 ```
-0D LEN 83 F0 <beverage> <action> <recipe TLV…> <(profile_slot << 2) | accessory_bits> <crc>
+0D LEN 83 F0 <beverage> <action> <recipe TLV…> <(profile_slot << 2) | operation> <crc>
 ```
 
 - `action`: `01` start, `02` stop (longshot also lists next step, stop
@@ -357,10 +357,10 @@ outlet; accessory `0` must not block it.
   |---|---|---|---|
   | `0x00` | TEMP | `0x0D` | THE_TEMP (tea) |
   | `0x01` | COFFEE | `0x0F` | HOT_WATER |
-  | `0x02` | TASTE (aroma/strength) | `0x18` | PROGRAMABLE |
+  | `0x02` | TASTE (0 pre-ground, 1–5 extra mild … extra strong) | `0x18` | PROGRAMABLE |
   | `0x04` | BLEND | `0x19` | VISIBLE |
   | `0x08` | DUExPER (double) | `0x1A` | VISIBLE_IN_PROGRAMMING |
-  | `0x09` | MILK | `0x1B` | INDEX_LENGTH |
+  | `0x09` | MILK (tenths of a second) | `0x1B` | INDEX_LENGTH |
   | `0x0A` | MILK_TEMP | `0x1C` | ACCESSORIO |
 
   **Correction:** earlier versions of this document and aioecam ≤ 0.1.0b6
@@ -368,13 +368,21 @@ outlet; accessory `0` must not block it.
   (its size enum knows SMALL 0, MID 1, LARGE 2, NOT_SET 255; live values such
   as 4 do not fit it, so the exact meaning is open). Raw values reported
   below are correct; only the name was wrong.
+- Units **[app]**: coffee (`0x01`) and hot water (`0x0F`) are millilitres in
+  the current parameter lists; milk (`0x09`) is a duration in tenths of a
+  second (Soul profile 1 cappuccino `210` = 21 s). Which tags are 2 bytes wide
+  comes from a server-side parameter table in the app; "`0x01`, `0x09`, `0x0F`
+  are wide" matches every Soul frame but is not a rule for all models.
 - The app sends only tags `< 23` plus `27, 28, 31, 33, 38, 39`, and drops
   `0x08` (APK rule `E0`, via lodzen **[reported]**).
 - **Keep the machine's tag order.** The Soul's own frames are not sorted
   (espresso: `01, 1B, 02, 04`). With these rules aioecam rebuilds every one of
   the 61 stored beverage frames byte for byte **[measured, offline]**.
-- Take the trailer's accessory bits from the stored command. They are not the
-  monitor's accessory enum.
+- The trailer's low two bits are the **operation** **[app]**: 0 delete,
+  1 save, 2 prepare, 3 prepare and save (the app's inversion variants 5–7 are
+  not modelled). A normal brew uses 2, and every stored Soul frame does.
+  Earlier versions of this document called these bits accessory bits; the
+  accessory is recipe tag `0x1C`.
 - **Custom amounts work [measured]:** reading the hot-water recipe (profile
   1: water 250 ml, tag `0x1B` = 1) and sending it with water 100 ml,
   `0d0d83f010010f00641b0106e5e1`, dispensed about 100 ml (status 11, back to
@@ -475,6 +483,10 @@ Specific to LAN mode:
   hot-water command raised 3019 from 2 to 3 while 3018 stayed 0. The inherited
   mapping (3018 hot water, 3019 tea) was wrong for this machine, which has no
   tea function. 3018 stays unknown/raw.
+- The app labels A2 id **3025** as total tea and shows id 106 (water) as
+  raw × 0.5 ml **[app]**. 3025 is not confirmed on this machine; the
+  integration keeps it raw. The app's cloud path also calls `d719_id22_tea`
+  "tea", which does not contradict the local 3019 measurement.
 
 ## 9. Without internet [measured, small sample]
 

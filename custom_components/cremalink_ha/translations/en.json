@@ -339,11 +339,11 @@
         },
         "milk": {
           "name": "Milk",
-          "description": "Milk amount as raw machine value."
+          "description": "Milk duration in tenths of a second, as the app stores it (210 = 21 s); not millilitres."
         },
         "intensity": {
           "name": "Intensity",
-          "description": "Raw aroma/strength step 0-5 (the app's TASTE parameter)."
+          "description": "Aroma/strength step 1 (extra mild) to 5 (extra strong), the app's TASTE parameter."
         }
       }
     }
