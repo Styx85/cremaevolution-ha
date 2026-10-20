@@ -424,7 +424,7 @@ Confirm a write by the acknowledgement **and** by reading the value back.
 
 | Parameter | Meaning | Values |
 |---|---|---|
-| `0x003E` | auto-off | 0 = 15 min, 1 = 30 min **[measured]**; Wi-Fi machines in the app: 2 = 1 h, 3 = 3 h **[app]** (same as lodzen); the app's non-Wi-Fi branch uses 2 = 1 h, 3 = 2 h, 4 = 3 h (same as Arbuzov), which explains the conflicting sources |
+| `0x003E` | auto-off | 0 = 15 min, 1 = 30 min, 3 = 3 h **[measured]** (3 h set at the display read back as 3, 2026-10-20); 2 = 1 h **[app]**. The app's Wi-Fi branch maps 1 h → 2, 3 h → 3 (same as lodzen); its non-Wi-Fi branch uses 3 = 2 h, 4 = 3 h (same as Arbuzov), which explains the conflicting sources |
 | `0x0032` | water hardness | 0–3 = displayed level 1–4 (read 2 = level 3) |
 | `0x003F` | bit mask | 0x04 sounds, 0x08 cup light, 0x10 energy saving, 0x20 cup warmer; read-modify-write **[reported]** |
 | `0x003D` | water temperature | **[reported]** |
@@ -552,7 +552,7 @@ itself after a power cut.
   HA restart during standby, and after a module restart without internet
   (expected to fail at registration, 2.2).
 - Meaning of the `action` codes, and the exact meaning of `0x1B` INDEX_LENGTH values such as 4.
-- Auto-off 2 = 1 h and 3 = 3 h on the Soul: app-backed (7.6), not yet read back after setting them on the display.
+- Auto-off 2 = 1 h on the Soul: app-backed (7.6), not yet read back after setting it on the display (3 = 3 h is measured).
 - Write-session lifetime and renewal; why a repeated recipe request is not
   republished (5).
 - Is `local_reg` really limited to one client on this firmware?

@@ -19,7 +19,11 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-SETTINGS_UPDATE_INTERVAL = timedelta(minutes=15)
+# Settings can only be changed at the display while the machine is awake, so
+# follow them closely then; in standby a slow poll is enough. A read lost
+# while the machine is busy (e.g. rinsing) is retried in the next round.
+SETTINGS_INTERVAL_AWAKE = timedelta(seconds=60)
+SETTINGS_INTERVAL_STANDBY = timedelta(minutes=15)
 
 
 def settings_supported(device: EcamDevice) -> bool:
@@ -29,11 +33,17 @@ def settings_supported(device: EcamDevice) -> bool:
 class SettingsCoordinator(DataUpdateCoordinator[dict[str, int | None]]):
     def __init__(self, hass: HomeAssistant, device: EcamDevice) -> None:
         super().__init__(
-            hass, _LOGGER, name=f"{DOMAIN}_settings", update_interval=SETTINGS_UPDATE_INTERVAL
+            hass, _LOGGER, name=f"{DOMAIN}_settings", update_interval=SETTINGS_INTERVAL_STANDBY
         )
         self.device = device
 
+    def _adjust_interval(self) -> None:
+        state = self.device.state
+        awake = state is not None and state.status != 0
+        self.update_interval = SETTINGS_INTERVAL_AWAKE if awake else SETTINGS_INTERVAL_STANDBY
+
     async def _async_update_data(self) -> dict[str, int | None]:
+        self._adjust_interval()
         values: dict[str, int | None] = dict(self.data or {})
         errors = []
         for key in self.device.profile.settings:

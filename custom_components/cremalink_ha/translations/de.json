@@ -224,7 +224,8 @@
         "state": {
           "15_min": "15 Min.",
           "30_min": "30 Min.",
-          "1_h": "1 Std."
+          "1_h": "1 Std.",
+          "3_h": "3 Std."
         }
       },
       "water_hardness": {
