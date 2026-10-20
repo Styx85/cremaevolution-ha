@@ -486,11 +486,14 @@ beverages, bean system `200` and custom `230`–`235`.
 - **Identity:** `d560_versione_sw`, `d561_machine_model` and
   `d562_versione_sw_ui` all read `0` on this machine. `software_version`
   reads `Millcore_demo 2.0.0 Jun 18 2020`; "Millcore" is De'Longhi's platform
-  name for the Soul (cloud `oem_model` `DL-millcore` **[reported]**), so this
-  is most likely the machine-side software string, not the Ayla module's
-  firmware. Another Soul's cloud metadata shows the same software string and
-  the Wi-Fi module separately: model `AY008ESP1`, firmware
-  `ADA 1.5.3 esp-idf-v3.3.1 2020-04-13` **[reported, ioBroker/AdapterRequests#664]**.
+  name for the Soul, so this is most likely the machine-side software string,
+  not the Ayla module's firmware. The machine's cloud device record lists the
+  module separately **[measured, 2026-10-20]**: `oem_model` `DL-millcore`,
+  module `model` `AY008ESP1` (ESP32-based), `sw_version`
+  `ADA 1.5.3 esp-idf-v3.3.1 2020-04-13 00:25:55 2cfd564`, `lan_enabled` true.
+  Another Soul reports the identical values
+  **[reported, ioBroker/AdapterRequests#664]**. The device's `product_name`
+  is its DSN.
   An Eletta Explore in the same thread reports `Striker_cb_demo 1.1.0 Oct 18
   2022`, so the `_demo` suffix appears to be De'Longhi's normal naming, not a
   sign of a defective unit. None of these properties identifies the model.
