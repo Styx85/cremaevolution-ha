@@ -23,12 +23,13 @@ from .settings_coordinator import SettingsCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-# Raw value -> option key. Only values whose meaning is confirmed or agreed by
-# every source are offered (see docs/ecam-lan-protocol.md, 7.6): auto-off 3+
-# is "3 h" in one source and "2 h" in another, so it is not offered; a machine
-# set to such a value shows as unknown with its raw value as attribute.
+# Raw value -> option key. Only confirmed values are offered (see
+# docs/ecam-lan-protocol.md, 7.6). Auto-off 3 = 3 h: the app's Wi-Fi branch
+# maps it so, and setting 3 h on an ECAM610.75's display read back as 3
+# (2026-10-20). The app's non-Wi-Fi branch (3 = 2 h, 4 = 3 h) is not used by
+# these machines; any other value shows as unknown with its raw value.
 SETTING_OPTIONS: dict[str, dict[int, str]] = {
-    "auto_off": {0: "15_min", 1: "30_min", 2: "1_h"},
+    "auto_off": {0: "15_min", 1: "30_min", 2: "1_h", 3: "3_h"},
     "water_hardness": {0: "level_1", 1: "level_2", 2: "level_3", 3: "level_4"},
 }
 

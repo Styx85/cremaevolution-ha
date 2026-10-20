@@ -60,7 +60,7 @@ probe tools used for the measurements are in [tools/](tools/).
 | Device API with confirmed commands, A2 statistics (verified live: on, espresso, off, full A2 table) | ✅ done |
 | Cloud onboarding and wake fallback (verified with a real account) | ✅ done |
 | Home Assistant integration without add-on, migration | ✅ done (tested against a real HA core) |
-| Beta releases | ✅ available; 0.3.2b1 uses aioecam 0.1.0b9 |
+| Beta releases | ✅ available; 0.3.3b1 uses aioecam 0.1.0b9 |
 | 24 h soak test | ⏳ planned |
 
 ### Hardware validation and beta scope
@@ -305,3 +305,12 @@ string (the `software_version` property; on the tested ECAM610.75
 "Millcore_demo 2.0.0 Jun 18 2020"). It is read once after setup, also in
 standby. This is the firmware of the Wi-Fi module; the machine controller
 does not report its own version over LAN (`d560`–`d562` read `0`).
+
+### Auto-off 3 h and faster settings (0.3.3b1)
+
+- Auto-off now offers **3 h**: setting 3 h at the machine's display read back
+  as raw value 3, matching the Coffee Link app.
+- Settings are polled every 60 s while the machine is on (changes at the
+  display show up within a minute) and every 15 min in standby. A read that
+  fails while the machine is busy, e.g. rinsing, is retried in the next round.
+- The diagnostics export includes the settings values.

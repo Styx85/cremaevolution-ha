@@ -70,13 +70,44 @@ async def test_setting_selects_read_and_write(hass: HomeAssistant, machine: Fake
 async def test_setting_select_unconfirmed_value_is_unknown(
     hass: HomeAssistant, machine: FakeMachine
 ) -> None:
-    machine.settings[0x3E] = 3  # "3 h" or "2 h" depending on the source: not offered
+    machine.settings[0x3E] = 4  # "3 h" only in the app's non-Wi-Fi branch: not offered
     entry = await _setup(hass)
     auto_off = _select(hass, entry, "setting_auto_off")
-    await _eventually(lambda: hass.states.get(auto_off).attributes.get("raw_value") == 3)
+    await _eventually(lambda: hass.states.get(auto_off).attributes.get("raw_value") == 4)
     state = hass.states.get(auto_off)
     assert state.state == "unknown"
-    assert "3_h" not in state.attributes["options"]
+    assert "4" not in state.attributes["options"]
+
+
+async def test_setting_auto_off_3_h(hass: HomeAssistant, machine: FakeMachine) -> None:
+    # Measured 2026-10-20: 3 h set at the display reads back as raw 3.
+    machine.settings[0x3E] = 3
+    entry = await _setup(hass)
+    auto_off = _select(hass, entry, "setting_auto_off")
+    await _eventually(lambda: hass.states.get(auto_off).state == "3_h")
+    await hass.services.async_call(
+        "select", "select_option", {"entity_id": auto_off, "option": "15_min"}, blocking=True
+    )
+    assert machine.settings[0x3E] == 0
+
+
+async def test_settings_poll_faster_while_awake(hass: HomeAssistant, machine: FakeMachine) -> None:
+    from custom_components.cremalink_ha.settings_coordinator import (
+        SETTINGS_INTERVAL_AWAKE,
+        SETTINGS_INTERVAL_STANDBY,
+    )
+
+    entry = await _setup(hass)
+    settings = entry.runtime_data.settings_coordinator
+    await settings.async_refresh()
+    assert settings.update_interval == SETTINGS_INTERVAL_STANDBY
+    await _power_on(hass, entry, machine)
+    await settings.async_refresh()
+    assert settings.update_interval == SETTINGS_INTERVAL_AWAKE
+    machine.settings[0x3E] = 1  # changed at the display
+    await settings.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get(_select(hass, entry, "setting_auto_off")).state == "30_min"
 
 
 async def test_profile_select_needs_awake_machine(hass: HomeAssistant, machine: FakeMachine) -> None:

@@ -34,7 +34,14 @@ async def async_get_config_entry_diagnostics(
         return None if value is None else datetime.fromtimestamp(value, UTC).isoformat()
 
     now = time.time()
+    settings = runtime.settings_coordinator
     return {
+        "settings": None if settings is None else {
+            "values": dict(settings.data or {}),
+            "last_update_success": settings.last_update_success,
+            "update_interval_seconds": settings.update_interval.total_seconds()
+            if settings.update_interval else None,
+        },
         "identity": {
             "transport": "ayla_lan",
             "model": device.machine_info.get("d561_machine_model"),
