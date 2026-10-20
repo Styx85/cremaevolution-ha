@@ -484,8 +484,16 @@ beverages, bean system `200` and custom `230`–`235`.
   profiles 2–5 an identical (probably factory) order. Being in the list does
   not make a beverage brewable.
 - **Identity:** `d560_versione_sw`, `d561_machine_model` and
-  `d562_versione_sw_ui` all read `0` on this machine; `software_version` is
-  the Wi-Fi module's firmware string. None of them identifies the model.
+  `d562_versione_sw_ui` all read `0` on this machine. `software_version`
+  reads `Millcore_demo 2.0.0 Jun 18 2020`; "Millcore" is De'Longhi's platform
+  name for the Soul (cloud `oem_model` `DL-millcore` **[reported]**), so this
+  is most likely the machine-side software string, not the Ayla module's
+  firmware. Another Soul's cloud metadata shows the same software string and
+  the Wi-Fi module separately: model `AY008ESP1`, firmware
+  `ADA 1.5.3 esp-idf-v3.3.1 2020-04-13` **[reported, ioBroker/AdapterRequests#664]**.
+  An Eletta Explore in the same thread reports `Striker_cb_demo 1.1.0 Oct 18
+  2022`, so the `_demo` suffix appears to be De'Longhi's normal naming, not a
+  sign of a defective unit. None of these properties identifies the model.
 
 ## 8. A2 statistics over LAN [measured]
 

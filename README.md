@@ -300,11 +300,13 @@ so the state follows without internet as well. Requires aioecam 0.1.0b9.
 
 ### Firmware version in the device info (0.3.2b1)
 
-The device page in Home Assistant now shows the Wi-Fi module's firmware
-string (the `software_version` property; on the tested ECAM610.75
+The device page in Home Assistant now shows the software string the machine
+reports in its `software_version` property (on the tested ECAM610.75
 "Millcore_demo 2.0.0 Jun 18 2020"). It is read once after setup, also in
-standby. This is the firmware of the Wi-Fi module; the machine controller
-does not report its own version over LAN (`d560`–`d562` read `0`).
+standby. "Millcore" is De'Longhi's platform name for the PrimaDonna Soul
+(`DL-millcore`), so this is most likely the machine-side software, not the
+Wi-Fi module's own firmware (other Souls report that as `ADA 1.5.3` via the
+cloud). `d560`–`d562` read `0` on this machine.
 
 ### Auto-off 3 h and faster settings (0.3.3b1)
 
