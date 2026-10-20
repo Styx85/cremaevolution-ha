@@ -205,3 +205,26 @@ async def test_offline_module_state_follows_via_monitor_requests(
     await hass.async_block_till_done()
     assert hass.states.get(switch).state == "on"
     assert machine.monitor_requests >= 1
+
+
+async def test_firmware_version_on_the_device(hass: HomeAssistant, machine: FakeMachine) -> None:
+    from homeassistant.helpers import device_registry as dr
+
+    machine.device.properties["software_version"] = "Millcore_demo 2.0.0 Jun 18 2020"
+    entry = await _setup(hass)
+    await hass.async_block_till_done(wait_background_tasks=True)
+    (device,) = dr.async_entries_for_config_entry(dr.async_get(hass), entry.entry_id)
+    assert device.sw_version == "Millcore_demo 2.0.0 Jun 18 2020"
+
+
+async def test_missing_firmware_property_is_harmless(
+    hass: HomeAssistant, machine: FakeMachine
+) -> None:
+    from homeassistant.helpers import device_registry as dr
+
+    machine.device.properties.pop("software_version", None)
+    entry = await _setup(hass)
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert entry.state is ConfigEntryState.LOADED
+    (device,) = dr.async_entries_for_config_entry(dr.async_get(hass), entry.entry_id)
+    assert device.sw_version is None

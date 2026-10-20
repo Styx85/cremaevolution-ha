@@ -43,6 +43,7 @@ from .const import (
     LEGACY_DEVICE_MAP_TO_PROFILE,
 )
 from .coordinator import EcamCoordinator
+from .firmware import async_update_firmware
 from .recipe_reader import RecipeReader, supported as recipe_reads_supported
 from .runtime import RuntimeData, async_acquire_server, async_release_server
 from .services import async_setup_services
@@ -148,6 +149,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: CremalinkConfigEntry) ->
         if recipe_reads_supported(device) else None,
     )
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    # Diagnostic only; do not hold up setup.
+    entry.async_create_background_task(
+        hass, async_update_firmware(hass, entry, device), "cremalink firmware version"
+    )
     return True
 
 

@@ -60,7 +60,7 @@ probe tools used for the measurements are in [tools/](tools/).
 | Device API with confirmed commands, A2 statistics (verified live: on, espresso, off, full A2 table) | ✅ done |
 | Cloud onboarding and wake fallback (verified with a real account) | ✅ done |
 | Home Assistant integration without add-on, migration | ✅ done (tested against a real HA core) |
-| Beta releases | ✅ available; 0.3.1b1 uses aioecam 0.1.0b9 |
+| Beta releases | ✅ available; 0.3.2b1 uses aioecam 0.1.0b9 |
 | 24 h soak test | ⏳ planned |
 
 ### Hardware validation and beta scope
@@ -297,3 +297,11 @@ state changes by itself, though, so a plain read kept showing "standby"
 after the machine had woken up. The integration now asks the machine for a
 fresh status on every poll (monitor request) and waits for the new frame,
 so the state follows without internet as well. Requires aioecam 0.1.0b9.
+
+### Firmware version in the device info (0.3.2b1)
+
+The device page in Home Assistant now shows the Wi-Fi module's firmware
+string (the `software_version` property; on the tested ECAM610.75
+"Millcore_demo 2.0.0 Jun 18 2020"). It is read once after setup, also in
+standby. This is the firmware of the Wi-Fi module; the machine controller
+does not report its own version over LAN (`d560`–`d562` read `0`).
