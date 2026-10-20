@@ -1,9 +1,11 @@
-"""Show the Wi-Fi module's firmware string as the device's firmware in HA.
+"""Show the machine's software string as the device's firmware in HA.
 
-The module reports it in the ``software_version`` property (on an ECAM610.75:
-"Millcore_demo 2.0.0 Jun 18 2020"). It is read once per setup with a plain
-property GET, which also works in standby; Home Assistant keeps the value in
-its device registry across restarts.
+The machine reports it in the ``software_version`` property (on an
+ECAM610.75: "Millcore_demo 2.0.0 Jun 18 2020"; "Millcore" is De'Longhi's
+platform name for the PrimaDonna Soul, so this is most likely the machine-side
+software rather than the Ayla Wi-Fi module's own firmware). It is read once per
+setup with a plain property GET, which also works in standby; Home Assistant
+keeps the value in its device registry across restarts.
 """
 
 from __future__ import annotations
