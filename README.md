@@ -60,7 +60,7 @@ probe tools used for the measurements are in [tools/](tools/).
 | Device API with confirmed commands, A2 statistics (verified live: on, espresso, off, full A2 table) | ✅ done |
 | Cloud onboarding and wake fallback (verified with a real account) | ✅ done |
 | Home Assistant integration without add-on, migration | ✅ done (tested against a real HA core) |
-| Beta releases | ✅ available; 0.3.3b1 uses aioecam 0.1.0b9 |
+| Beta releases | ✅ available; 0.3.4b1 uses aioecam 0.1.0b9 |
 | 24 h soak test | ⏳ planned |
 
 ### Hardware validation and beta scope
@@ -316,3 +316,16 @@ cloud). `d560`–`d562` read `0` on this machine.
   display show up within a minute) and every 15 min in standby. A read that
   fails while the machine is busy, e.g. rinsing, is retried in the next round.
 - The diagnostics export includes the settings values.
+
+### Smaller database (0.3.4b1)
+
+The two disabled-by-default diagnostic sensors (monitor diagnostics, A2
+statistics diagnostics) wrote their large attributes into the recorder on
+every update, tens of MB if enabled. Their attributes are now excluded from
+recording; they stay visible live and in the diagnostics download. The
+monitor diagnostics state is now the frame's own timestamp, so it only
+changes when the machine publishes a new frame instead of on every poll.
+
+Data recorded before the update is removed by the recorder's normal purge
+(default 10 days), or right away with the `recorder.purge_entities` action
+for these two entities.
