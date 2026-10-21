@@ -228,3 +228,32 @@ async def test_missing_firmware_property_is_harmless(
     assert entry.state is ConfigEntryState.LOADED
     (device,) = dr.async_entries_for_config_entry(dr.async_get(hass), entry.entry_id)
     assert device.sw_version is None
+
+
+async def test_diagnostic_sensors_keep_large_attributes_out_of_the_recorder(
+    hass: HomeAssistant, machine: FakeMachine
+) -> None:
+    from datetime import UTC, datetime
+
+    from homeassistant.const import MATCH_ALL
+
+    from custom_components.cremalink_ha.sensor import (
+        CremalinkMonitorDiagnosticsSensor,
+        CremalinkStatisticsDiagnosticsSensor,
+    )
+
+    # Users saw ~66 MB of recorder data from these attributes.
+    assert MATCH_ALL in CremalinkMonitorDiagnosticsSensor._unrecorded_attributes
+    assert MATCH_ALL in CremalinkStatisticsDiagnosticsSensor._unrecorded_attributes
+
+    entry = await _setup(hass)
+    registry = er.async_get(hass)
+    entity_id = registry.async_get_entity_id("sensor", DOMAIN, f"{entry.entry_id}_monitor_diagnostics")
+    registry.async_update_entity(entity_id, disabled_by=None)
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    state = hass.states.get(entity_id)
+    payload_ts = entry.runtime_data.coordinator.data.state.timestamp
+    # State = the frame's own timestamp, not the receive time of every poll.
+    assert state.state == datetime.fromtimestamp(payload_ts, UTC).isoformat()
+    assert "raw_hex" in state.attributes and "received_at" in state.attributes

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import time
+from datetime import UTC, datetime
 
 from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
 from homeassistant.const import (
+    MATCH_ALL,
     EntityCategory,
     PERCENTAGE,
     UnitOfVolume,
@@ -353,6 +355,10 @@ class CremalinkMonitorDiagnosticsSensor(
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_entity_registry_enabled_default = False
     _attr_icon = "mdi:bug-check"
+    # The attributes are large and change with every poll; the recorder kept
+    # writing them (tens of MB). Live view and the diagnostics download keep
+    # them; history stores only the state.
+    _unrecorded_attributes = frozenset({MATCH_ALL})
 
     def __init__(self, coordinator, entry):
         """Initialize the temporary monitor diagnostics sensor."""
@@ -375,14 +381,16 @@ class CremalinkMonitorDiagnosticsSensor(
 
     @property
     def native_value(self):
-        """Use receive time as state so stale frames are obvious."""
+        """The frame's own payload timestamp: it only changes when the machine
+        publishes a new frame (the receive time, which changed on every poll, is
+        an attribute)."""
         data = self.coordinator.data
+        state = getattr(data, "state", None)
+        stamp = getattr(state, "timestamp", None)
+        if stamp:
+            return datetime.fromtimestamp(stamp, UTC).isoformat()
         received_at = getattr(data, "received_at", None)
-
-        if received_at is None:
-            return None
-
-        return received_at.isoformat()
+        return None if received_at is None else received_at.isoformat()
 
     @property
     def extra_state_attributes(self):
@@ -584,8 +592,10 @@ class CremalinkStatisticsDiagnosticsSensor(
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     # Avoid recording the complete raw statistics dictionary unless the
-    # user explicitly enables this diagnostic entity.
+    # user explicitly enables this diagnostic entity; even then keep the
+    # large tables out of the recorder (they are in the diagnostics download).
     _attr_entity_registry_enabled_default = False
+    _unrecorded_attributes = frozenset({MATCH_ALL})
 
     _attr_icon = "mdi:code-braces"
 
