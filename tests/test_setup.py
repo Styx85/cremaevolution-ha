@@ -257,3 +257,29 @@ async def test_diagnostic_sensors_keep_large_attributes_out_of_the_recorder(
     # State = the frame's own timestamp, not the receive time of every poll.
     assert state.state == datetime.fromtimestamp(payload_ts, UTC).isoformat()
     assert "raw_hex" in state.attributes and "received_at" in state.attributes
+
+
+async def test_failed_setup_releases_link_and_server(hass: HomeAssistant, machine: FakeMachine) -> None:
+    # Codex review A3: only a failed LAN registration was cleaned up. A failure
+    # after it (e.g. the first status read during the wake-up rinse) left the
+    # link and the server registration behind, and the retry added another.
+    from unittest.mock import patch
+
+    from homeassistant.helpers.update_coordinator import UpdateFailed
+
+    entry = MockConfigEntry(domain=DOMAIN, version=2, title="Soul", data=V2_DATA, unique_id=V2_DATA["dsn"])
+    entry.add_to_hass(hass)
+    with patch(
+        "custom_components.cremalink_ha.coordinator.EcamCoordinator._async_update_data",
+        side_effect=UpdateFailed("machine busy"),
+    ):
+        assert not await hass.config_entries.async_setup(entry.entry_id)
+    assert entry.state is ConfigEntryState.SETUP_RETRY
+    shared = hass.data.get(DOMAIN, {}).get("lan")
+    assert shared is None or (entry.entry_id not in shared.users and not shared.server._links)
+
+    # The retry works normally on a clean server.
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.LOADED
+    assert len(hass.data[DOMAIN]["lan"].server._links) == 1

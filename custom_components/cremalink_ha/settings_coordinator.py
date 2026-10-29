@@ -7,13 +7,18 @@ which announces the write session and confirms each write by reading it back.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from collections.abc import Callable
 from datetime import timedelta
 
 from aioecam.device import EcamDevice
 from aioecam.exceptions import EcamError
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.update_coordinator import (
+    DataUpdateCoordinator,
+    UpdateFailed,
+)
 
 from .const import DOMAIN
 
@@ -36,13 +41,40 @@ class SettingsCoordinator(DataUpdateCoordinator[dict[str, int | None]]):
             hass, _LOGGER, name=f"{DOMAIN}_settings", update_interval=SETTINGS_INTERVAL_STANDBY
         )
         self.device = device
+        # One settings operation at a time: a poll that read the old value must
+        # not publish after a confirmed write (Codex review A6).
+        self._lock = asyncio.Lock()
+        self._was_awake = False
+
+    def _awake(self) -> bool:
+        state = self.device.state
+        return state is not None and state.status != 0
 
     def _adjust_interval(self) -> None:
-        state = self.device.state
-        awake = state is not None and state.status != 0
-        self.update_interval = SETTINGS_INTERVAL_AWAKE if awake else SETTINGS_INTERVAL_STANDBY
+        self.update_interval = SETTINGS_INTERVAL_AWAKE if self._awake() else SETTINGS_INTERVAL_STANDBY
+
+    def follow(self, status: DataUpdateCoordinator) -> Callable[[], None]:
+        """Switch to the fast interval as soon as the machine wakes up.
+
+        Without this the next standby poll could be up to 15 minutes away
+        (Codex review A7). Returns the listener remover for unload.
+        """
+
+        @callback
+        def _status_changed() -> None:
+            awake = self._awake()
+            if awake and not self._was_awake:
+                self.update_interval = SETTINGS_INTERVAL_AWAKE
+                self.hass.async_create_task(self.async_request_refresh())
+            self._was_awake = awake
+
+        return status.async_add_listener(_status_changed)
 
     async def _async_update_data(self) -> dict[str, int | None]:
+        async with self._lock:
+            return await self._read_all()
+
+    async def _read_all(self) -> dict[str, int | None]:
         self._adjust_interval()
         values: dict[str, int | None] = dict(self.data or {})
         errors = []
@@ -61,5 +93,6 @@ class SettingsCoordinator(DataUpdateCoordinator[dict[str, int | None]]):
 
     async def async_write(self, key: str, value: int) -> None:
         """Write a setting; aioecam confirms it by reading it back."""
-        await self.device.write_setting(key, value)
-        self.async_set_updated_data({**(self.data or {}), key: value})
+        async with self._lock:
+            await self.device.write_setting(key, value)
+            self.async_set_updated_data({**(self.data or {}), key: value})

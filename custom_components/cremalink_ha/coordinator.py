@@ -56,7 +56,9 @@ class EcamCoordinator(DataUpdateCoordinator[MonitorView]):
 
     async def _async_update_data(self) -> MonitorView:
         try:
-            state = await self.device.request_monitor(timeout=3)
+            # The timeout covers the whole request including the module fetching
+            # it (aioecam >= 0.1.2b1), so leave room for a slow Wi-Fi round trip.
+            state = await self.device.request_monitor(timeout=5)
         except EcamError as err:
             self.monitor_consecutive_failures += 1
             if self.data is not None and self.monitor_consecutive_failures <= TRANSIENT_FAILURE_LIMIT:
