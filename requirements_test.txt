@@ -1,2 +1,2 @@
 pytest-homeassistant-custom-component
-aioecam==0.1.0b9
+aioecam==0.1.1b1
