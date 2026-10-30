@@ -60,7 +60,7 @@ probe tools used for the measurements are in [tools/](tools/).
 | Device API with confirmed commands, A2 statistics (verified live: on, espresso, off, full A2 table) | ✅ done |
 | Cloud onboarding and wake fallback (verified with a real account) | ✅ done |
 | Home Assistant integration without add-on, migration | ✅ done (tested against a real HA core) |
-| Beta releases | ✅ available; 0.3.5b1 uses aioecam 0.1.1b1 |
+| Beta releases | ✅ available; 0.3.6b1 uses aioecam 0.1.2b1 |
 | 24 h soak test | ⏳ planned |
 
 ### Hardware validation and beta scope
@@ -329,3 +329,17 @@ changes when the machine publishes a new frame instead of on every poll.
 Data recorded before the update is removed by the recorder's normal purge
 (default 10 days), or right away with the `recorder.purge_entities` action
 for these two entities.
+
+### Robustness round (0.3.6b1)
+
+From a code review, each fix covered by a regression test:
+
+- A failed setup (e.g. the first status read during the wake-up rinse) now
+  releases the LAN link and server; the retry starts clean.
+- Settings: a poll can no longer overwrite a value you just set, and the
+  fast 60 s polling starts as soon as the machine wakes up.
+- The profile name request is cancelled when the integration reloads.
+- With aioecam 0.1.2b1: commands queued during a keep-alive no longer wait
+  up to 20 s (the cause of "machine did not fetch … within 10 s" errors),
+  cancelled commands are never sent later, monitor requests respect their
+  timeout, and delayed older status frames are ignored.

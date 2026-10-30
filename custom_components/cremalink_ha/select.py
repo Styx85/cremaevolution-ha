@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
 import time
 from typing import Any
@@ -115,6 +117,7 @@ class CremalinkProfileSelect(CoordinatorEntity[EcamCoordinator], SelectEntity, R
         self._slot: int | None = None
         self._loading = False
         self._last_attempt = 0.0
+        self._names_task: asyncio.Task[None] | None = None
 
     def _label(self, slot: int) -> str:
         name = self._names.get(slot)
@@ -159,7 +162,18 @@ class CremalinkProfileSelect(CoordinatorEntity[EcamCoordinator], SelectEntity, R
             return
         self._loading = True
         self._last_attempt = time.monotonic()
-        self.hass.async_create_background_task(self._load_names(), "cremalink profile names")
+        # Owned by this entity: cancelled on removal or reload (Codex review A8).
+        self._names_task = self.hass.async_create_background_task(
+            self._load_names(), "cremalink profile names"
+        )
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self._names_task is not None and not self._names_task.done():
+            self._names_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._names_task
+        self._names_task = None
+        await super().async_will_remove_from_hass()
 
     async def _load_names(self) -> None:
         try:
@@ -168,7 +182,8 @@ class CremalinkProfileSelect(CoordinatorEntity[EcamCoordinator], SelectEntity, R
             _LOGGER.debug("profile names not available yet: %s", err)
         else:
             self._names = {slot.slot: slot.name for slot in slots}
-            self.async_write_ha_state()
+            if self.hass is not None and self.entity_id is not None:
+                self.async_write_ha_state()
         finally:
             self._loading = False
 

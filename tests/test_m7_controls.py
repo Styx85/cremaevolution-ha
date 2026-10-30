@@ -217,3 +217,80 @@ async def test_brew_custom_refuses_pre_ground_intensity(hass: HomeAssistant, mac
                 blocking=True,
             )
     assert not any(f.opcode == 0x83 for f in machine.received)
+
+
+async def test_settings_poll_cannot_overwrite_a_confirmed_write(
+    hass: HomeAssistant, machine: FakeMachine
+) -> None:
+    # Codex review A6: a poll that had read the old auto-off value published it
+    # after a confirmed write had already changed it.
+    entry = await _setup(hass)
+    settings = entry.runtime_data.settings_coordinator
+    await settings.async_refresh()
+    device = entry.runtime_data.device
+    original = device.read_setting
+    hold = asyncio.Event()
+
+    async def slow_read(key: str, **kwargs):
+        value = await original(key, **kwargs)
+        if key == "water_hardness":
+            await hold.wait()  # the poll is still running, auto-off already read
+        return value
+
+    device.read_setting = slow_read  # type: ignore[method-assign]
+    poll = hass.async_create_task(settings.async_refresh())
+    await asyncio.sleep(0.5)
+    write = hass.async_create_task(settings.async_write("auto_off", 1))
+    await asyncio.sleep(0.2)
+    hold.set()
+    await poll
+    await write
+    assert machine.settings[0x3E] == 1
+    assert settings.data["auto_off"] == 1  # the write wins, not the older read
+
+
+async def test_waking_up_switches_settings_to_fast_polling_at_once(
+    hass: HomeAssistant, machine: FakeMachine
+) -> None:
+    # Codex review A7: the fast interval only took effect at the next scheduled
+    # standby poll, up to 15 minutes after the machine woke up.
+    from custom_components.cremalink_ha.settings_coordinator import SETTINGS_INTERVAL_AWAKE
+
+    entry = await _setup(hass)
+    settings = entry.runtime_data.settings_coordinator
+    await settings.async_refresh()
+    reads_before = sum(1 for f in machine.received if f.opcode == 0x95)
+    machine.settings[0x3E] = 1  # will be changed at the display after waking
+    await _power_on(hass, entry, machine)  # no manual settings refresh
+    await _eventually(lambda: settings.update_interval == SETTINGS_INTERVAL_AWAKE)
+    await _eventually(lambda: sum(1 for f in machine.received if f.opcode == 0x95) > reads_before)
+    await _eventually(lambda: (settings.data or {}).get("auto_off") == 1)
+
+
+async def test_profile_name_request_is_cancelled_on_reload(
+    hass: HomeAssistant, machine: FakeMachine
+) -> None:
+    # Codex review A8: the name request belonged to hass, not to the entity, and
+    # kept running against the removed link after a reload.
+    entry = await _setup(hass)
+    device = entry.runtime_data.device
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    async def hanging_profiles(**kwargs):
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    device.profiles = hanging_profiles  # type: ignore[method-assign]
+    await _power_on(hass, entry, machine)  # names are only requested while awake
+    await asyncio.wait_for(started.wait(), 5)
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    await asyncio.wait_for(cancelled.wait(), 2)
+    # The new entity's own request is cancelled on unload as well.
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()

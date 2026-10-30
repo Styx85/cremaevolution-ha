@@ -90,70 +90,78 @@ async def async_setup_entry(hass: HomeAssistant, entry: CremalinkConfigEntry) ->
         key_id=data.get(CONF_KEY_ID),
     )
 
-    cloud = None
-    if data.get(CONF_REFRESH_TOKEN):
+    try:
+        cloud = None
+        if data.get(CONF_REFRESH_TOKEN):
 
-        def _store_token(token: str) -> None:
-            # Persist the rotating token. This must not reload the entry: only
-            # option changes do (OptionsFlowWithReload), otherwise every token
-            # refresh would restart the integration in a loop.
-            hass.config_entries.async_update_entry(
-                entry, data={**entry.data, CONF_REFRESH_TOKEN: token}
+            def _store_token(token: str) -> None:
+                # Persist the rotating token. This must not reload the entry: only
+                # option changes do (OptionsFlowWithReload), otherwise every token
+                # refresh would restart the integration in a loop.
+                hass.config_entries.async_update_entry(
+                    entry, data={**entry.data, CONF_REFRESH_TOKEN: token}
+                )
+
+            cloud = AylaCloud(
+                async_get_clientsession(hass),
+                load_region("eu"),
+                data[CONF_REFRESH_TOKEN],
+                on_refresh_token=_store_token,
             )
 
-        cloud = AylaCloud(
-            async_get_clientsession(hass),
-            load_region("eu"),
-            data[CONF_REFRESH_TOKEN],
-            on_refresh_token=_store_token,
-        )
+        profile = load_profile(data.get(CONF_PROFILE, DEFAULT_PROFILE))
+        device = EcamDevice(link, profile, cloud=cloud)
+        try:
+            await link.wait_active(15)
+        except NotConnected as err:
+            hint = ""
+            if link.stats.last_registration_status == 404:
+                hint = " (the Wi-Fi module refuses LAN mode until it has reached the cloud)"
+            raise ConfigEntryNotReady(f"no LAN session with the machine{hint}") from err
 
-    device = EcamDevice(link, load_profile(data.get(CONF_PROFILE, DEFAULT_PROFILE)), cloud=cloud)
-    try:
-        await link.wait_active(15)
-    except NotConnected as err:
+        coordinator = EcamCoordinator(hass, device)
+        await coordinator.async_config_entry_first_refresh()
+
+        statistics = None
+        if statistics_supported(device):
+            statistics = StatisticsCoordinator(hass, device, cloud)
+            # Optional and slower than the status; do not hold up setup.
+            entry.async_create_background_task(
+                hass, statistics.async_refresh(), "cremalink initial statistics"
+            )
+
+        settings = None
+        if settings_supported(device):
+            settings = SettingsCoordinator(hass, device)
+            entry.async_on_unload(settings.follow(coordinator))
+            # Readable in standby; do not hold up setup.
+            entry.async_create_background_task(
+                hass, settings.async_refresh(), "cremalink initial settings"
+            )
+
+        entry.runtime_data = RuntimeData(
+            device=device,
+            link=link,
+            coordinator=coordinator,
+            statistics_coordinator=statistics,
+            settings_coordinator=settings,
+            cloud=cloud,
+            recipe_reader=RecipeReader(device, coordinator.async_update_listeners)
+            if recipe_reads_supported(device) else None,
+        )
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        # Diagnostic only; do not hold up setup.
+        entry.async_create_background_task(
+            hass, async_update_firmware(hass, entry, device), "cremalink firmware version"
+        )
+        return True
+    except BaseException:
+        # Any failed setup, including a timed-out first refresh or cancellation,
+        # must release the link and our share of the LAN server; otherwise the
+        # retry registers on top of a leftover link (Codex review A3).
         await server.remove_link(data[CONF_DEVICE_IP])
         await async_release_server(hass, entry.entry_id)
-        hint = ""
-        if link.stats.last_registration_status == 404:
-            hint = " (the Wi-Fi module refuses LAN mode until it has reached the cloud)"
-        raise ConfigEntryNotReady(f"no LAN session with the machine{hint}") from err
-
-    coordinator = EcamCoordinator(hass, device)
-    await coordinator.async_config_entry_first_refresh()
-
-    statistics = None
-    if statistics_supported(device):
-        statistics = StatisticsCoordinator(hass, device, cloud)
-        # Optional and slower than the status; do not hold up setup.
-        entry.async_create_background_task(
-            hass, statistics.async_refresh(), "cremalink initial statistics"
-        )
-
-    settings = None
-    if settings_supported(device):
-        settings = SettingsCoordinator(hass, device)
-        # Readable in standby; do not hold up setup.
-        entry.async_create_background_task(
-            hass, settings.async_refresh(), "cremalink initial settings"
-        )
-
-    entry.runtime_data = RuntimeData(
-        device=device,
-        link=link,
-        coordinator=coordinator,
-        statistics_coordinator=statistics,
-        settings_coordinator=settings,
-        cloud=cloud,
-        recipe_reader=RecipeReader(device, coordinator.async_update_listeners)
-        if recipe_reads_supported(device) else None,
-    )
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    # Diagnostic only; do not hold up setup.
-    entry.async_create_background_task(
-        hass, async_update_firmware(hass, entry, device), "cremalink firmware version"
-    )
-    return True
+        raise
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: CremalinkConfigEntry) -> bool:
