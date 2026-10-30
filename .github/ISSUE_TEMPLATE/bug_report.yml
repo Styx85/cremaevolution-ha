@@ -1,0 +1,56 @@
+name: Bug report
+description: Something does not work with your coffee machine
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! English or German is fine.
+        **Never post your LAN key, password, tokens or the full DSN.** The
+        diagnostics download already removes them.
+  - type: input
+    id: version
+    attributes:
+      label: CremaEvolution version
+      description: HACS → CremaEvolution, or Settings → Devices & services → CremaEvolution.
+      placeholder: e.g. 0.3.6b1
+    validations:
+      required: true
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      placeholder: e.g. 2026.10.3
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Machine model
+      description: Model on the type plate, plus the region if you know it.
+      placeholder: e.g. PrimaDonna Soul ECAM610.75, Eletta Explore ECAM450.65.G (CH)
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened, and what did you expect?
+      description: Include whether the machine was on or in standby, and whether it has internet access.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: |
+        Settings → System → Logs, filtered for `cremalink_ha`. Please include
+        the **first** error, not only the ones that repeat afterwards.
+      render: text
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: |
+        Settings → Devices & services → CremaEvolution → ⋮ → Download
+        diagnostics, then drag the file here. If setup fails, this is not
+        available; describe the setup step instead.
