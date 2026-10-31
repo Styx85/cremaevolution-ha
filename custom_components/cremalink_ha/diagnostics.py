@@ -76,6 +76,8 @@ async def async_get_config_entry_diagnostics(
         "profile": runtime.device.profile.family,
         "connection": "cloud" if isinstance(runtime.link, CloudLink) else "lan",
         "link": {"state": runtime.link.state, **asdict(runtime.link.stats)},
+        # Eletta: whose session id signs the requests (configured / app / default).
+        "session_id_source": runtime.device.app_id_source,
         "cloud_fallback_configured": runtime.cloud is not None,
         "cloud_fallbacks_used": runtime.device.cloud_fallbacks,
         "monitor": None
