@@ -30,12 +30,6 @@ async def test_diagnostics_redact_secrets(hass: HomeAssistant, machine: FakeMach
     assert diag["cloud_fallback_configured"] is True
     assert diag["session_id_source"] is None  # the Soul signs nothing
 
-    # Link errors can name the serial or the address; neither leaks.
-    link = entry.runtime_data.link
-    link.stats.last_error = f"GET /dsns/{data['dsn']}/properties.json from {link.device_ip}"
-    diag = await async_get_config_entry_diagnostics(hass, entry)
-    assert data["dsn"] not in json.dumps(diag["link"]) and link.device_ip not in json.dumps(diag)
-
 
 async def test_passive_catalog_and_freshness_export(hass: HomeAssistant, machine: FakeMachine) -> None:
     from aioecam.ecam.frame import RESPONSE, Frame

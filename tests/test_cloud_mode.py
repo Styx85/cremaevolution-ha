@@ -17,6 +17,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 import custom_components.cremalink_ha as integration
 from custom_components.cremalink_ha.const import DOMAIN
+from custom_components.cremalink_ha.diagnostics import async_get_config_entry_diagnostics
 from tests.conftest import DSN, V2_DATA
 from tests.fakes.fake_cloud import MemoryCloud
 from tests.fakes.fake_machine import FakeMachine
@@ -206,3 +207,14 @@ async def test_rejected_sign_in_at_setup_asks_for_login(
     assert entry.state is ConfigEntryState.SETUP_ERROR
     flows = hass.config_entries.flow.async_progress_by_handler(DOMAIN)
     assert [f["context"]["source"] for f in flows] == ["reauth"]
+
+
+async def test_diagnostics_hide_the_serial_in_link_errors(
+    hass: HomeAssistant, cloud: tuple[MemoryCloud, FakeMachine]
+) -> None:
+    entry = await _setup(hass, CLOUD_DATA)
+    link = entry.runtime_data.link
+    link.stats.last_error = f"GET /dsns/{DSN}/properties.json -> HTTP 500"
+    diag = await async_get_config_entry_diagnostics(hass, entry)
+    assert diag["link"]["last_error"] == "GET /dsns/**REDACTED**/properties.json -> HTTP 500"
+    assert diag["session_id_source"] is None  # the simulated machine is a Soul

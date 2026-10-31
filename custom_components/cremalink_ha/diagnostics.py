@@ -105,10 +105,8 @@ def _link_stats(link: LanLink | CloudLink) -> dict[str, Any]:
     stats = asdict(link.stats)
     error = stats.get("last_error")
     if isinstance(error, str):
-        # A cloud link's device_ip is only the word "cloud".
-        secrets = [link.dsn] if isinstance(link, CloudLink) else [link.dsn, link.device_ip]
-        for secret in secrets:
-            if secret:
+        for secret in (link.dsn, link.device_ip):
+            if secret and secret != "cloud":  # a cloud link without an address
                 error = error.replace(secret, "**REDACTED**")
         stats["last_error"] = error
     return stats
