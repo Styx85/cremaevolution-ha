@@ -69,8 +69,10 @@ probe tools used for the measurements are in [tools/](tools/).
 Live protocol tests have been performed on a **PrimaDonna Soul ECAM610.75**.
 Other model variants, including Eletta Explore, have only codec, captured-frame
 and simulated-device coverage; their behaviour on real hardware needs
-confirmation by owners of those machines. Eletta write sessions are not
-implemented. Integration tests run against a real Home Assistant core with a
+confirmation by owners of those machines. An Eletta Explore owner confirmed
+power on, a coffee and power off in cloud mode with 0.3.7b1
+([#27](https://github.com/Styx85/cremaevolution-ha/issues/27)). Eletta write
+sessions over the local connection are not implemented. Integration tests run against a real Home Assistant core with a
 simulated coffee machine, and do not establish hardware compatibility for
 other models. See the library's
 [hardware results and limitations](https://github.com/Styx85/aioecam/blob/main/docs/m7-protocol.md).
@@ -125,8 +127,9 @@ does. It is slower and does less:
 **Connection**: *Automatic* (default) uses the local connection whenever a
 local key is stored and the cloud otherwise; *Local only* and *De'Longhi
 cloud only* force one. Status reads through the cloud were tested on a
-PrimaDonna Soul; commands through the cloud have only been tested against
-a simulated machine so far.
+PrimaDonna Soul. On an Eletta Explore an owner confirmed power on, a coffee
+and power off through the cloud with 0.3.7b1; that 0.3.8b1 (which adopts the
+Coffee Link app's session id) works the same is not confirmed yet.
 
 ### Good to know
 
