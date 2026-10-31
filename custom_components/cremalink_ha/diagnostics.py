@@ -7,6 +7,7 @@ from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any
 
+from aioecam.cloud.link import CloudLink
 from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.core import HomeAssistant
 
@@ -73,6 +74,7 @@ async def async_get_config_entry_diagnostics(
         "entry_data": async_redact_data(dict(entry.data), REDACT_KEYS),
         "entry_options": async_redact_data(dict(entry.options), REDACT_KEYS),
         "profile": runtime.device.profile.family,
+        "connection": "cloud" if isinstance(runtime.link, CloudLink) else "lan",
         "link": {"state": runtime.link.state, **asdict(runtime.link.stats)},
         "cloud_fallback_configured": runtime.cloud is not None,
         "cloud_fallbacks_used": runtime.device.cloud_fallbacks,

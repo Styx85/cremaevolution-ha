@@ -78,11 +78,19 @@ async def test_login_errors(hass: HomeAssistant, side_effect: Exception, error: 
     assert result["type"] is FlowResultType.FORM and result["errors"] == {"base": error}
 
 
-async def test_machine_without_lan_key_aborts(hass: HomeAssistant) -> None:
-    with patch(f"{FLOW}.onboard", _onboarding(_machine(lan_key=None))):
+async def test_machine_without_lan_key_offers_the_cloud(hass: HomeAssistant) -> None:
+    with (
+        patch(f"{FLOW}.onboard", _onboarding(_machine(lan_key=None, name="Eletta"))),
+        patch("custom_components.cremalink_ha.async_setup_entry", return_value=True),
+    ):
         result = await _start(hass)
         result = await hass.config_entries.flow.async_configure(result["flow_id"], LOGIN)
-    assert result["type"] is FlowResultType.ABORT and result["reason"] == "no_lan"
+        assert result["type"] is FlowResultType.FORM and result["step_id"] == "cloud_confirm"
+        assert result["description_placeholders"] == {"name": "Eletta"}
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"]["lan_key"] is None and result["data"]["refresh_token"] == "refresh-1"
+    assert result["options"] == {"connection": "cloud"}
 
 
 async def test_manual_setup(hass: HomeAssistant) -> None:
@@ -133,6 +141,38 @@ async def test_reauth_fills_in_lan_key(hass: HomeAssistant) -> None:
     assert entry.data["refresh_token"] == "refresh-1"
 
 
+async def test_key_without_address_is_offered_the_cloud(hass: HomeAssistant) -> None:
+    machine = _machine()
+    machine = OnboardedMachine(
+        device=CloudDevice(dsn=DSN, name="Soul", oem_model="DL-millcore", lan_enabled=True,
+                           lan_ip=None, connection_status="Online"),  # fmt: skip
+        profile_family="ecam61x", lan_key=LAN_KEY, key_id=1,
+    )
+    with (
+        patch(f"{FLOW}.onboard", _onboarding(machine)),
+        patch("custom_components.cremalink_ha.async_setup_entry", return_value=True),
+    ):
+        result = await _start(hass)
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], LOGIN)
+        assert result["step_id"] == "cloud_confirm"
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+    assert result["options"] == {"connection": "cloud"}
+
+
+async def test_reauth_without_lan_key_continues_in_cloud_mode(hass: HomeAssistant) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, version=2, unique_id=DSN,
+                            data={"dsn": DSN, "device_ip": None, "lan_key": None, "profile": "ecam61x"})  # fmt: skip
+    entry.add_to_hass(hass)
+    with (
+        patch(f"{FLOW}.onboard", _onboarding(_machine(lan_key=None))),
+        patch("custom_components.cremalink_ha.async_setup_entry", return_value=True),
+    ):
+        result = await entry.start_reauth_flow(hass)
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], LOGIN)
+    assert result["type"] is FlowResultType.ABORT and result["reason"] == "reauth_successful"
+    assert entry.data["lan_key"] is None and entry.data["refresh_token"] == "refresh-1"
+
+
 async def test_reconfigure_ip(hass: HomeAssistant) -> None:
     entry = MockConfigEntry(domain=DOMAIN, version=2, unique_id=DSN, data=V2_DATA)
     entry.add_to_hass(hass)
@@ -161,13 +201,29 @@ async def test_reconfigure_rejects_other_machine(hass: HomeAssistant) -> None:
     assert result["errors"] == {"base": "wrong_machine"}
 
 
+async def test_options_refuse_local_only_without_key(hass: HomeAssistant) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, version=2, unique_id=DSN,
+                            data={**V2_DATA, "lan_key": None, "refresh_token": "r"})  # fmt: skip
+    entry.add_to_hass(hass)
+    with patch("custom_components.cremalink_ha.async_setup_entry", return_value=True):
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {"connection": "lan", "lan_port": 10280}
+        )
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"connection": "no_lan_key"}
+
+
 async def test_options(hass: HomeAssistant) -> None:
     entry = MockConfigEntry(domain=DOMAIN, version=2, unique_id=DSN, data=V2_DATA)
     entry.add_to_hass(hass)
     with patch("custom_components.cremalink_ha.async_setup_entry", return_value=True):
         result = await hass.config_entries.options.async_init(entry.entry_id)
         result = await hass.config_entries.options.async_configure(
-            result["flow_id"], {"lan_port": 10299, "advertise_ip": "192.168.1.10"}
+            result["flow_id"],
+            {"connection": "cloud", "lan_port": 10299, "advertise_ip": "192.168.1.10"},
         )
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options == {"lan_port": 10299, "advertise_ip": "192.168.1.10"}
+    assert entry.options == {
+        "connection": "cloud", "lan_port": 10299, "advertise_ip": "192.168.1.10"
+    }

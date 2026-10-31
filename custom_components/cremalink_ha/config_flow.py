@@ -1,5 +1,6 @@
 """Config flow: cloud-assisted onboarding by default, manual LAN setup as fallback.
 
+Machines the cloud gives no LAN key become cloud entries after a confirmation.
 Only the Ayla refresh token is stored, never the account password.
 """
 
@@ -33,6 +34,7 @@ from homeassistant.helpers.selector import (
 
 from .const import (
     CONF_ADVERTISE_IP,
+    CONF_CONNECTION,
     CONF_DEVICE_IP,
     CONF_DSN,
     CONF_EMAIL,
@@ -43,6 +45,9 @@ from .const import (
     CONF_PASSWORD,
     CONF_PROFILE,
     CONF_REFRESH_TOKEN,
+    CONNECTION_AUTO,
+    CONNECTION_CLOUD,
+    CONNECTION_LAN,
     DEFAULT_LAN_PORT,
     DEFAULT_PROFILE,
     DOMAIN,
@@ -87,6 +92,7 @@ class CremalinkConfigFlow(ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         self._machines: dict[str, OnboardedMachine] = {}
         self._refresh_token: str | None = None
+        self._cloud_machine: OnboardedMachine | None = None
 
     @staticmethod
     @callback
@@ -140,10 +146,29 @@ class CremalinkConfigFlow(ConfigFlow, domain=DOMAIN):
         await self.async_set_unique_id(dsn)
         self._abort_if_unique_id_configured()
         if not machine.lan_key or not machine.device.lan_ip:
-            return self.async_abort(reason="no_lan")
+            self._cloud_machine = machine
+            return await self.async_step_cloud_confirm()
         assert self._refresh_token
         return self.async_create_entry(
             title=machine.device.name or dsn, data=_entry_data(machine, self._refresh_token)
+        )
+
+    async def async_step_cloud_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """No LAN key: offer the cloud, which is slower (issue #27)."""
+        machine = self._cloud_machine
+        assert machine is not None and self._refresh_token
+        name = machine.device.name or machine.device.dsn
+        if user_input is not None:
+            # Keep the choice: a later local key must not switch it silently.
+            return self.async_create_entry(
+                title=name,
+                data=_entry_data(machine, self._refresh_token),
+                options={CONF_CONNECTION: CONNECTION_CLOUD},
+            )
+        return self.async_show_form(
+            step_id="cloud_confirm", description_placeholders={"name": name}
         )
 
     # --- manual setup --------------------------------------------------------------
@@ -197,9 +222,8 @@ class CremalinkConfigFlow(ConfigFlow, domain=DOMAIN):
                 machine = self._machines.get(entry.data[CONF_DSN])
                 if machine is None:
                     errors["base"] = "machine_not_on_account"
-                elif not machine.lan_key or not machine.device.lan_ip:
-                    return self.async_abort(reason="no_lan")
                 else:
+                    # Without a LAN key the entry continues in cloud mode.
                     assert self._refresh_token
                     return self.async_update_reload_and_abort(
                         entry, data={**entry.data, **_entry_data(machine, self._refresh_token)}
@@ -238,18 +262,34 @@ class CremalinkConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class CremalinkOptionsFlow(OptionsFlowWithReload):
-    """Callback server port and the address announced to the machine.
+    """Connection (local, cloud, automatic), the callback server port and the
+    address announced to the machine.
 
     Reloads the entry only when options change; data updates (e.g. a rotated
     refresh token) never reload it.
     """
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
+        data = self.config_entry.data
         if user_input is not None:
-            return self.async_create_entry(data=user_input)
+            has_lan = bool(data.get(CONF_LAN_KEY) and data.get(CONF_DEVICE_IP))
+            if user_input.get(CONF_CONNECTION) == CONNECTION_LAN and not has_lan:
+                errors[CONF_CONNECTION] = "no_lan_key"
+            else:
+                return self.async_create_entry(data=user_input)
         opts = self.config_entry.options
         schema = vol.Schema(
             {
+                vol.Required(
+                    CONF_CONNECTION, default=opts.get(CONF_CONNECTION, CONNECTION_AUTO)
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=[CONNECTION_AUTO, CONNECTION_LAN, CONNECTION_CLOUD],
+                        translation_key=CONF_CONNECTION,
+                        mode=SelectSelectorMode.DROPDOWN,
+                    )
+                ),
                 vol.Required(
                     CONF_LAN_PORT, default=opts.get(CONF_LAN_PORT, DEFAULT_LAN_PORT)
                 ): vol.All(int, vol.Range(min=1024, max=65535)),
@@ -258,4 +298,4 @@ class CremalinkOptionsFlow(OptionsFlowWithReload):
                 ): str,
             }
         )
-        return self.async_show_form(step_id="init", data_schema=schema)
+        return self.async_show_form(step_id="init", data_schema=schema, errors=errors)

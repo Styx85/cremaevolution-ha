@@ -4,6 +4,27 @@ Newest first. Release notes with downloads are on the
 [releases page](https://github.com/Styx85/cremaevolution-ha/releases); versions
 before 0.3 are listed there only.
 
+## 0.3.7b1: Cloud mode for machines without a local connection
+
+Uses aioecam 0.1.5b1.
+
+- Machines the De'Longhi cloud gives no local key (issue #27, an Eletta
+  Explore) are no longer rejected. Setup explains the limits and creates a
+  **cloud entry**: commands and status go through the De'Longhi cloud,
+  slower than locally. Settings, statistics and the recipe reader are left
+  out in cloud mode to stay within the cloud's request limit.
+- New option **Connection**: Automatic (local first, default), Local only,
+  De'Longhi cloud only.
+- Signing in again for an entry without a local key now continues in cloud
+  mode instead of failing. A sign-in the cloud rejects asks you to sign in
+  again; a machine that is offline in the cloud shows as unavailable instead
+  of with its last cloud values.
+- "Local only" is refused in the options for a machine without a local key.
+- Diagnostics show which connection is in use.
+- Cloud-mode findings from [delonghi-ha](https://github.com/sk7n4k3d/delonghi-ha)
+  (MIT): the Eletta request signature, a keep-alive every 4 minutes and the
+  request limit.
+
 ## 0.3.6b1: Robustness round
 
 From a code review, each fix covered by a regression test:

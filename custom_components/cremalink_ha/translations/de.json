@@ -283,6 +283,10 @@
         "data": {
           "device_ip": "IP-Adresse der Maschine"
         }
+      },
+      "cloud_confirm": {
+        "title": "Keine lokale Verbindung: Cloud verwenden",
+        "description": "Die De'Longhi-Cloud hat für {name} keinen lokalen Schlüssel, die Maschine lässt sich deshalb nicht über dein lokales Netzwerk steuern. Sie kann stattdessen über die De'Longhi-Cloud laufen, wie in der Coffee-Link-App. Befehle brauchen dann einige Sekunden, Zustandsänderungen erscheinen innerhalb von etwa einer Minute. Einstellungen, Statistiken und das Auslesen der Rezepte gibt es im Cloud-Modus nicht."
       }
     },
     "error": {
@@ -296,7 +300,6 @@
     },
     "abort": {
       "already_configured": "Diese Maschine ist bereits eingerichtet.",
-      "no_lan": "Die Cloud hat keinen lokalen Schlüssel für diese Maschine (lokale Verbindung deaktiviert). Aktiviere die lokale Verbindung in der Coffee-Link-App oder nutze die manuelle Einrichtung.",
       "reauth_successful": "Erneute Anmeldung erfolgreich.",
       "reconfigure_successful": "Die IP-Adresse wurde aktualisiert."
     }
@@ -304,13 +307,17 @@
   "options": {
     "step": {
       "init": {
-        "title": "Lokale Verbindung",
-        "description": "Die Maschine verbindet sich über diesen Port mit Home Assistant. Die angekündigte Adresse nur ändern, wenn Home Assistant für die Maschine unter einer anderen IP erreichbar ist (z. B. Docker oder VLANs).",
+        "title": "Verbindung",
+        "description": "Automatisch nutzt die lokale Verbindung, wenn die Maschine einen lokalen Schlüssel hat, sonst die De'Longhi-Cloud (langsamer). Port und angekündigte Adresse gelten nur für die lokale Verbindung: Die Maschine verbindet sich auf diesem Port mit Home Assistant; die angekündigte Adresse nur ändern, wenn Home Assistant für die Maschine unter einer anderen IP erreichbar ist (z. B. Docker oder VLANs).",
         "data": {
+          "connection": "Verbindung",
           "lan_port": "Port für die Rückrufe der Maschine",
           "advertise_ip": "Der Maschine angekündigte Adresse (optional)"
         }
       }
+    },
+    "error": {
+      "no_lan_key": "Für diese Maschine fehlen lokaler Schlüssel oder Adresse; wähle Automatisch oder Nur De'Longhi-Cloud."
     }
   },
   "services": {
@@ -368,6 +375,13 @@
         "hot_water": "Hot Water",
         "latte_macchiato": "Latte Macchiato",
         "long_coffee": "Long Coffee"
+      }
+    },
+    "connection": {
+      "options": {
+        "auto": "Automatisch (lokal zuerst)",
+        "lan": "Nur lokal",
+        "cloud": "Nur De'Longhi-Cloud"
       }
     }
   }

@@ -23,9 +23,10 @@ The original authors are acknowledged in [Credits](#-credits).
 > **Version 0.3 is a ground-up rewrite: no add-on any more.**
 >
 > Home Assistant talks to the machine directly over the local network (Ayla LAN
-> mode) through the new async library **aioecam**. The De'Longhi cloud is only
-> used to fetch the LAN key during setup and, optionally, as a fallback to wake
-> the machine. Existing installations are migrated automatically: entities,
+> mode) through the new async library **aioecam**. The De'Longhi cloud is used
+> to fetch the LAN key during setup, optionally as a fallback to wake the
+> machine, and for machines without a local connection
+> ([cloud mode](#machines-without-a-local-connection-cloud-mode)). Existing installations are migrated automatically: entities,
 > entity ids, history and dashboards stay. You can uninstall the Cremalink
 > Server add-on afterwards.
 
@@ -107,6 +108,26 @@ Coming from the add-on version: nothing to do. After the update the existing
 entry is migrated on the next start. Entries that used the cloud connection
 ask you to sign in once, to fetch the local key.
 
+### Machines without a local connection (cloud mode)
+
+Some machines get no local key from the De'Longhi cloud (it reports the
+local connection as disabled, seen on an Eletta Explore). Setup then offers
+to run the machine **through the De'Longhi cloud**, like the Coffee Link app
+does. It is slower and does less:
+
+- Commands take a few seconds; state changes show up within about a minute
+  (every 60 s, every 5 s for a minute after a command).
+- Settings, statistics and the recipe reader are not available, because they
+  would need many cloud requests (Ayla allows roughly 200 per hour).
+- It needs internet access, of course.
+
+**Settings** > **Devices & Services** > **CremaEvolution** > **Configure** >
+**Connection**: *Automatic* (default) uses the local connection whenever a
+local key is stored and the cloud otherwise; *Local only* and *De'Longhi
+cloud only* force one. Status reads through the cloud were tested on a
+PrimaDonna Soul; commands through the cloud have only been tested against
+a simulated machine so far.
+
 ### Good to know
 
 - After a restart of its Wi-Fi module (e.g. a power cut) the machine accepts
@@ -119,7 +140,6 @@ ask you to sign in once, to fetch the local key.
 - The raw descale-load sensor is a disabled-by-default diagnostic entity;
   its unit and weighting are not established. Enable it manually if needed
   for investigation. Existing enabled entities retain their current setting.
-
 - Without internet, power on/off and status work locally. The Wi-Fi module
   can still drop LAN mode after a Wi-Fi reconnect or overnight and only
   accepts local connections again once it reaches the cloud, so offline
@@ -185,7 +205,9 @@ and [cremalink](https://github.com/miditkl/cremalink) by
 [Midian Tekle Elfu (@miditkl)](https://github.com/miditkl)**, including the
 cloud-assisted onboarding contributed by [@lodzen](https://github.com/lodzen).
 The original integration, device maps and protocol work made this project
-possible. Improvements found here are offered upstream as pull requests where
+possible. The cloud mode follows the findings of
+[delonghi-ha](https://github.com/sk7n4k3d/delonghi-ha) by @sk7n4k3d (MIT),
+which drives Eletta Explore machines through the cloud. Improvements found here are offered upstream as pull requests where
 they fit.
 
 Not affiliated with De'Longhi or Ayla Networks.
