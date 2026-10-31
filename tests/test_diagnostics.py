@@ -28,6 +28,7 @@ async def test_diagnostics_redact_secrets(hass: HomeAssistant, machine: FakeMach
     assert diag["link"]["state"] == "active" and diag["link"]["key_exchanges"] >= 1
     assert diag["monitor"]["status_name"] == "in_standby"
     assert diag["cloud_fallback_configured"] is True
+    assert diag["session_id_source"] is None  # the Soul signs nothing
 
 
 async def test_passive_catalog_and_freshness_export(hass: HomeAssistant, machine: FakeMachine) -> None:

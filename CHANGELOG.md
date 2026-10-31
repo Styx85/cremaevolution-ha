@@ -4,6 +4,19 @@ Newest first. Release notes with downloads are on the
 [releases page](https://github.com/Styx85/cremaevolution-ha/releases); versions
 before 0.3 are listed there only.
 
+## 0.3.8b1: Eletta in cloud mode uses the app's session id
+
+Uses aioecam 0.1.6b1.
+
+- An Eletta only carries out cloud commands from a session with the id the
+  Coffee Link app uses with it; with any other id the cloud accepts the
+  command and the machine does nothing (found by
+  [delonghi_coffeelink](https://github.com/actabi/delonghi_coffeelink)).
+  Cloud mode now reads that id once from what the app last sent. If the app
+  has never been used with the machine, start one drink from the app once.
+- Diagnostics show where the id comes from (`session_id_source`: `app` or
+  `default`).
+
 ## 0.3.7b1: Cloud mode for machines without a local connection
 
 Uses aioecam 0.1.5b1.

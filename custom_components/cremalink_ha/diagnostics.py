@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from aioecam.cloud.link import CloudLink
+from aioecam.lan.link import LanLink
 from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.core import HomeAssistant
 
@@ -75,7 +76,9 @@ async def async_get_config_entry_diagnostics(
         "entry_options": async_redact_data(dict(entry.options), REDACT_KEYS),
         "profile": runtime.device.profile.family,
         "connection": "cloud" if isinstance(runtime.link, CloudLink) else "lan",
-        "link": {"state": runtime.link.state, **asdict(runtime.link.stats)},
+        "link": {"state": runtime.link.state, **_link_stats(runtime.link)},
+        # Eletta: whose session id signs the requests (configured / app / default).
+        "session_id_source": runtime.device.app_id_source,
         "cloud_fallback_configured": runtime.cloud is not None,
         "cloud_fallbacks_used": runtime.device.cloud_fallbacks,
         "monitor": None
@@ -95,3 +98,15 @@ async def async_get_config_entry_diagnostics(
             "snapshot_fetched_at": statistics.data.get("snapshot_fetched_at"),
         },
     }
+
+
+def _link_stats(link: LanLink | CloudLink) -> dict[str, Any]:
+    """Link counters; error texts can name the serial or the address."""
+    stats = asdict(link.stats)
+    error = stats.get("last_error")
+    if isinstance(error, str):
+        for secret in (link.dsn, link.device_ip):
+            if secret and secret != "cloud":  # a cloud link without an address
+                error = error.replace(secret, "**REDACTED**")
+        stats["last_error"] = error
+    return stats
