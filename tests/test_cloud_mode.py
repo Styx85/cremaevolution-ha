@@ -167,7 +167,7 @@ async def test_offline_machine_turns_entities_unavailable(
     assert hass.states.get(status).state == "in_standby"
     memory.status = "Offline"
     link = entry.runtime_data.link
-    link._status_at = 0  # check the connection on the next poll
+    link._status_at = float("-inf")  # check the connection on the next poll
     link._wake.set()
     for _ in range(40):
         await asyncio.sleep(0.05)
