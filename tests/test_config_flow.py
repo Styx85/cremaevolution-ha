@@ -90,6 +90,7 @@ async def test_machine_without_lan_key_offers_the_cloud(hass: HomeAssistant) -> 
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"]["lan_key"] is None and result["data"]["refresh_token"] == "refresh-1"
+    assert result["options"] == {"connection": "cloud"}
 
 
 async def test_manual_setup(hass: HomeAssistant) -> None:
@@ -180,6 +181,19 @@ async def test_reconfigure_rejects_other_machine(hass: HomeAssistant) -> None:
             result["flow_id"], {"device_ip": "192.168.1.77"}
         )
     assert result["errors"] == {"base": "wrong_machine"}
+
+
+async def test_options_refuse_local_only_without_key(hass: HomeAssistant) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, version=2, unique_id=DSN,
+                            data={**V2_DATA, "lan_key": None, "refresh_token": "r"})  # fmt: skip
+    entry.add_to_hass(hass)
+    with patch("custom_components.cremalink_ha.async_setup_entry", return_value=True):
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {"connection": "lan", "lan_port": 10280}
+        )
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"connection": "no_lan_key"}
 
 
 async def test_options(hass: HomeAssistant) -> None:

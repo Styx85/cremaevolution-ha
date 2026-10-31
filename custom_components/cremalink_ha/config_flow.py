@@ -161,8 +161,11 @@ class CremalinkConfigFlow(ConfigFlow, domain=DOMAIN):
         assert machine is not None and self._refresh_token
         name = machine.device.name or machine.device.dsn
         if user_input is not None:
+            # Keep the choice: a later local key must not switch it silently.
             return self.async_create_entry(
-                title=name, data=_entry_data(machine, self._refresh_token)
+                title=name,
+                data=_entry_data(machine, self._refresh_token),
+                options={CONF_CONNECTION: CONNECTION_CLOUD},
             )
         return self.async_show_form(
             step_id="cloud_confirm", description_placeholders={"name": name}
@@ -267,8 +270,14 @@ class CremalinkOptionsFlow(OptionsFlowWithReload):
     """
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
+        data = self.config_entry.data
         if user_input is not None:
-            return self.async_create_entry(data=user_input)
+            has_lan = bool(data.get(CONF_LAN_KEY) and data.get(CONF_DEVICE_IP))
+            if user_input.get(CONF_CONNECTION) == CONNECTION_LAN and not has_lan:
+                errors[CONF_CONNECTION] = "no_lan_key"
+            else:
+                return self.async_create_entry(data=user_input)
         opts = self.config_entry.options
         schema = vol.Schema(
             {
@@ -289,4 +298,4 @@ class CremalinkOptionsFlow(OptionsFlowWithReload):
                 ): str,
             }
         )
-        return self.async_show_form(step_id="init", data_schema=schema)
+        return self.async_show_form(step_id="init", data_schema=schema, errors=errors)

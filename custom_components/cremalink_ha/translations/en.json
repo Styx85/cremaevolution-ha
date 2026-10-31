@@ -315,6 +315,9 @@
           "advertise_ip": "Address announced to the machine (optional)"
         }
       }
+    },
+    "error": {
+      "no_lan_key": "This machine has no local key; choose Automatic or De'Longhi cloud only."
     }
   },
   "services": {

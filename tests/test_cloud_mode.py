@@ -115,3 +115,44 @@ async def test_cloud_entry_without_sign_in_asks_for_login(hass: HomeAssistant) -
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
     assert entry.state is ConfigEntryState.SETUP_ERROR
+
+
+async def test_rejected_sign_in_asks_for_login(
+    hass: HomeAssistant, cloud: tuple[MemoryCloud, FakeMachine], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from aioecam.exceptions import AuthError
+
+    memory, _ = cloud
+    entry = await _setup(hass, CLOUD_DATA)
+
+    async def rejected(dsn: str, names: list[str] | None) -> dict[str, Any]:
+        raise AuthError("cloud rejected a fresh access token")
+
+    monkeypatch.setattr(memory, "read_properties", rejected)
+    link = entry.runtime_data.link
+    link._wake.set()
+    for _ in range(40):
+        if link.stats.auth_failed:
+            break
+        await asyncio.sleep(0.05)
+    await entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
+    flows = hass.config_entries.flow.async_progress_by_handler(DOMAIN)
+    assert [f["context"]["source"] for f in flows] == ["reauth"]
+
+
+async def test_local_only_without_key_is_an_error_not_a_login_loop(hass: HomeAssistant) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, version=2, unique_id=DSN, data=CLOUD_DATA,
+                            options={"connection": "lan"})  # fmt: skip
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.SETUP_ERROR
+    assert not hass.config_entries.flow.async_progress_by_handler(DOMAIN)
+
+
+async def test_key_without_address_uses_the_cloud(
+    hass: HomeAssistant, cloud: tuple[MemoryCloud, FakeMachine]
+) -> None:
+    entry = await _setup(hass, {**V2_DATA, "device_ip": None, "refresh_token": "refresh-0"})
+    assert isinstance(entry.runtime_data.link, CloudLink)

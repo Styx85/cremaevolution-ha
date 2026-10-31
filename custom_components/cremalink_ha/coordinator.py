@@ -17,6 +17,7 @@ from aioecam.device import EcamDevice
 from aioecam.ecam.monitor import MachineState
 from aioecam.exceptions import EcamError
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
@@ -67,6 +68,9 @@ class EcamCoordinator(DataUpdateCoordinator[MonitorView]):
             self.async_set_updated_data(self._view(state))
 
     async def _async_update_data(self) -> MonitorView:
+        if getattr(getattr(self.device.link, "stats", None), "auth_failed", False):
+            # Cloud mode: a revoked sign-in only comes back with a new login.
+            raise ConfigEntryAuthFailed("the cloud rejected the sign-in")
         try:
             # The timeout covers the whole request including the module fetching
             # it (aioecam >= 0.1.2b1), so leave room for a slow Wi-Fi round trip.

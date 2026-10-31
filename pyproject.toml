@@ -5,7 +5,7 @@ description = "Local-first Home Assistant integration for De'Longhi Coffee Link 
 requires-python = ">=3.13.2"
 dependencies = [
     "homeassistant>=2026.10.0",
-    "aioecam==0.1.4b1",
+    "aioecam==0.1.5b1",
 ]
 
 [tool.pytest.ini_options]

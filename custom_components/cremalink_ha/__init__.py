@@ -22,7 +22,11 @@ from aioecam.lan.link import LanLink
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
+    ConfigEntryError,
+    ConfigEntryNotReady,
+)
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_time_interval
@@ -84,9 +88,8 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 def _use_cloud(entry: CremalinkConfigEntry) -> bool:
     """LAN first: the cloud only when forced or when there is no LAN key."""
     mode = entry.options.get(CONF_CONNECTION, CONNECTION_AUTO)
-    return mode == CONNECTION_CLOUD or (
-        mode == CONNECTION_AUTO and not entry.data.get(CONF_LAN_KEY)
-    )
+    has_lan = bool(entry.data.get(CONF_LAN_KEY) and entry.data.get(CONF_DEVICE_IP))
+    return mode == CONNECTION_CLOUD or (mode == CONNECTION_AUTO and not has_lan)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: CremalinkConfigEntry) -> bool:
@@ -95,8 +98,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: CremalinkConfigEntry) ->
     if use_cloud and not data.get(CONF_REFRESH_TOKEN):
         # Cloud mode, or a migrated cloud-only entry: needs a login once.
         raise ConfigEntryAuthFailed("no LAN key and no cloud sign-in stored; sign in again")
-    if not use_cloud and not data.get(CONF_LAN_KEY):
-        raise ConfigEntryAuthFailed("local connection chosen but no LAN key; sign in again")
+    if not use_cloud and not (data.get(CONF_LAN_KEY) and data.get(CONF_DEVICE_IP)):
+        # Signing in again would not help: the cloud has no LAN key for it.
+        raise ConfigEntryError(
+            "local connection chosen, but this machine has no local key; "
+            "choose Automatic or De'Longhi cloud in the options"
+        )
 
     cloud = None
     if data.get(CONF_REFRESH_TOKEN):
@@ -150,6 +157,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: CremalinkConfigEntry) ->
             await link.wait_active(20 if use_cloud else 15)
         except NotConnected as err:
             if isinstance(link, CloudLink):
+                if link.stats.auth_failed:
+                    raise ConfigEntryAuthFailed("the cloud rejected the sign-in") from err
                 raise ConfigEntryNotReady(f"no connection through the cloud: {err}") from err
             hint = ""
             if link.stats.last_registration_status == 404:

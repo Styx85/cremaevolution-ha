@@ -41,14 +41,20 @@ class MemoryCloud:
 
     # --- what the integration uses (AylaCloud) --------------------------------
 
-    async def read_properties(self, dsn: str, names: list[str]) -> dict[str, dict[str, Any]]:
+    async def read_properties(
+        self, dsn: str, names: list[str] | None
+    ) -> dict[str, dict[str, Any]]:
         self.reads += 1
         return {
             n: {"name": n, "value": self.properties[n], "base_type": "string",
                 "data_updated_at": self.properties.updated_at[n]}  # fmt: skip
-            for n in names
+            for n in (names or list(self.properties))
             if n in self.properties
         }
+
+    async def connection_status(self, dsn: str) -> str:
+        self.reads += 1
+        return "Online"
 
     async def read_property(self, dsn: str, name: str) -> Any:
         self.reads += 1
