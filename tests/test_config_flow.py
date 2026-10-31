@@ -141,6 +141,24 @@ async def test_reauth_fills_in_lan_key(hass: HomeAssistant) -> None:
     assert entry.data["refresh_token"] == "refresh-1"
 
 
+async def test_key_without_address_is_offered_the_cloud(hass: HomeAssistant) -> None:
+    machine = _machine()
+    machine = OnboardedMachine(
+        device=CloudDevice(dsn=DSN, name="Soul", oem_model="DL-millcore", lan_enabled=True,
+                           lan_ip=None, connection_status="Online"),  # fmt: skip
+        profile_family="ecam61x", lan_key=LAN_KEY, key_id=1,
+    )
+    with (
+        patch(f"{FLOW}.onboard", _onboarding(machine)),
+        patch("custom_components.cremalink_ha.async_setup_entry", return_value=True),
+    ):
+        result = await _start(hass)
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], LOGIN)
+        assert result["step_id"] == "cloud_confirm"
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+    assert result["options"] == {"connection": "cloud"}
+
+
 async def test_reauth_without_lan_key_continues_in_cloud_mode(hass: HomeAssistant) -> None:
     entry = MockConfigEntry(domain=DOMAIN, version=2, unique_id=DSN,
                             data={"dsn": DSN, "device_ip": None, "lan_key": None, "profile": "ecam61x"})  # fmt: skip

@@ -156,3 +156,49 @@ async def test_key_without_address_uses_the_cloud(
 ) -> None:
     entry = await _setup(hass, {**V2_DATA, "device_ip": None, "refresh_token": "refresh-0"})
     assert isinstance(entry.runtime_data.link, CloudLink)
+
+
+async def test_offline_machine_turns_entities_unavailable(
+    hass: HomeAssistant, cloud: tuple[MemoryCloud, FakeMachine]
+) -> None:
+    memory, _ = cloud
+    entry = await _setup(hass, CLOUD_DATA)
+    status = _entity(hass, entry, "sensor", "status_name")
+    assert hass.states.get(status).state == "in_standby"
+    memory.status = "Offline"
+    link = entry.runtime_data.link
+    link._status_at = 0  # check the connection on the next poll
+    link._wake.set()
+    for _ in range(40):
+        await asyncio.sleep(0.05)
+        await hass.async_block_till_done()
+        if hass.states.get(status).state == "unavailable":
+            break
+    assert hass.states.get(status).state == "unavailable"
+    memory.status = "Online"
+    for _ in range(40):
+        await asyncio.sleep(0.05)
+        await hass.async_block_till_done()
+        if hass.states.get(status).state == "in_standby":
+            break
+    assert hass.states.get(status).state == "in_standby"
+
+
+async def test_rejected_sign_in_at_setup_asks_for_login(
+    hass: HomeAssistant, cloud: tuple[MemoryCloud, FakeMachine], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from aioecam.exceptions import AuthError
+
+    memory, _ = cloud
+
+    async def rejected(dsn: str) -> str:
+        raise AuthError("cloud rejected a fresh access token")
+
+    monkeypatch.setattr(memory, "connection_status", rejected)
+    entry = MockConfigEntry(domain=DOMAIN, version=2, unique_id=DSN, data=CLOUD_DATA)
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.SETUP_ERROR
+    flows = hass.config_entries.flow.async_progress_by_handler(DOMAIN)
+    assert [f["context"]["source"] for f in flows] == ["reauth"]

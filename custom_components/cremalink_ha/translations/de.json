@@ -317,7 +317,7 @@
       }
     },
     "error": {
-      "no_lan_key": "Diese Maschine hat keinen lokalen Schlüssel; wähle Automatisch oder Nur De'Longhi-Cloud."
+      "no_lan_key": "Für diese Maschine fehlen lokaler Schlüssel oder Adresse; wähle Automatisch oder Nur De'Longhi-Cloud."
     }
   },
   "services": {

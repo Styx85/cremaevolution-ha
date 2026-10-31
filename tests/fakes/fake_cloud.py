@@ -31,6 +31,7 @@ class MemoryCloud:
         self.writes: list[tuple[str, str]] = []
         self.reads = 0
         self.refresh_token = "refresh-1"
+        self.status = "Online"  # the machine's cloud connection
         self._tasks: set[asyncio.Task[None]] = set()
 
     # --- what FakeMachine uses -------------------------------------------------
@@ -54,7 +55,7 @@ class MemoryCloud:
 
     async def connection_status(self, dsn: str) -> str:
         self.reads += 1
-        return "Online"
+        return self.status
 
     async def read_property(self, dsn: str, name: str) -> Any:
         self.reads += 1

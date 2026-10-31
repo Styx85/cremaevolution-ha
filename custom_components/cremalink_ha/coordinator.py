@@ -16,6 +16,7 @@ from datetime import timedelta
 from aioecam.device import EcamDevice
 from aioecam.ecam.monitor import MachineState
 from aioecam.exceptions import EcamError
+from aioecam.lan.link import LinkState
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -49,6 +50,12 @@ class EcamCoordinator(DataUpdateCoordinator[MonitorView]):
         self.cloud = cloud
         self.monitor_consecutive_failures = 0
         self._unsubscribe = device.subscribe(self._on_push)
+        self._unsubscribe_link = lambda: None
+        on_state = getattr(device.link, "on_state", None)
+        if cloud and on_state is not None:
+            # The cloud link knows within one poll when the machine went
+            # offline; do not show its last values for another 15 minutes.
+            self._unsubscribe_link = on_state(self._on_link_state)
 
     def _view(self, state: MachineState) -> MonitorView:
         view = MonitorView(state=state, profile=self.device.profile, received_at=dt_util.utcnow())
@@ -66,6 +73,13 @@ class EcamCoordinator(DataUpdateCoordinator[MonitorView]):
         if self.data is None or self.data.state != state:
             self.monitor_consecutive_failures = 0
             self.async_set_updated_data(self._view(state))
+
+    @callback
+    def _on_link_state(self, state: LinkState) -> None:
+        if state is LinkState.ACTIVE:
+            self.hass.async_create_task(self.async_request_refresh())
+        elif state is not LinkState.CLOSED and self.last_update_success:
+            self.async_set_update_error(UpdateFailed(f"cloud link {state}"))
 
     async def _async_update_data(self) -> MonitorView:
         if getattr(getattr(self.device.link, "stats", None), "auth_failed", False):
@@ -93,4 +107,5 @@ class EcamCoordinator(DataUpdateCoordinator[MonitorView]):
 
     async def async_shutdown(self) -> None:
         self._unsubscribe()
+        self._unsubscribe_link()
         await super().async_shutdown()

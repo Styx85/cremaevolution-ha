@@ -317,7 +317,7 @@
       }
     },
     "error": {
-      "no_lan_key": "This machine has no local key; choose Automatic or De'Longhi cloud only."
+      "no_lan_key": "This machine has no local key or address; choose Automatic or De'Longhi cloud only."
     }
   },
   "services": {
