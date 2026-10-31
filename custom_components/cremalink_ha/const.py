@@ -1,5 +1,7 @@
 """Constants for the Cremalink Home Assistant integration."""
 
+from datetime import timedelta
+
 DOMAIN = "cremalink_ha"
 
 # Config entry v2 (aioecam, no add-on)
@@ -11,7 +13,18 @@ CONF_PROFILE = "profile"
 CONF_REFRESH_TOKEN = "refresh_token"  # optional: cloud wake fallback and service properties
 
 # Options
+CONF_CONNECTION = "connection"
+CONNECTION_AUTO = "auto"  # LAN when a LAN key is stored, otherwise the cloud
+CONNECTION_LAN = "lan"
+CONNECTION_CLOUD = "cloud"
 CONF_LAN_PORT = "lan_port"
+
+# Cloud mode: Ayla allows roughly 200 requests per hour and IP, and the cloud
+# stops relaying commands after about 5 minutes without a keep-alive
+# (both reported by sk7n4k3d/delonghi-ha).
+CLOUD_POLL_INTERVAL = 60.0  # seconds
+CLOUD_FAST_INTERVAL = 5.0  # seconds, for a minute after each command
+CLOUD_KEEPALIVE_INTERVAL = timedelta(minutes=4)
 CONF_ADVERTISE_IP = "advertise_ip"
 DEFAULT_LAN_PORT = 10280
 

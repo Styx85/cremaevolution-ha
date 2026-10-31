@@ -40,6 +40,10 @@
         "data": {
           "device_ip": "IP address of the machine"
         }
+      },
+      "cloud_confirm": {
+        "title": "No local connection: use the cloud",
+        "description": "The De'Longhi cloud has no local key for {name}, so it cannot be controlled over your local network. It can run through the De'Longhi cloud instead, like in the Coffee Link app. Commands take a few seconds, and state changes show up within about a minute. Settings, statistics and the recipe reader are not available in cloud mode."
       }
     },
     "error": {
@@ -53,7 +57,6 @@
     },
     "abort": {
       "already_configured": "This machine is already configured.",
-      "no_lan": "The cloud has no local key for this machine (local connection disabled). Enable the local connection in the Coffee Link app or use manual setup.",
       "reauth_successful": "Signed in again successfully.",
       "reconfigure_successful": "The IP address was updated."
     }
@@ -304,9 +307,10 @@
   "options": {
     "step": {
       "init": {
-        "title": "Local connection",
-        "description": "The machine connects to Home Assistant on this port. Change the announced address only if Home Assistant is reachable for the machine under a different IP (e.g. Docker or VLANs).",
+        "title": "Connection",
+        "description": "Automatic uses the local connection when the machine has a local key, otherwise the De'Longhi cloud (slower). The port and announced address only apply to the local connection: the machine connects to Home Assistant on this port; change the announced address only if Home Assistant is reachable for the machine under a different IP (e.g. Docker or VLANs).",
         "data": {
+          "connection": "Connection",
           "lan_port": "Port for the machine's callbacks",
           "advertise_ip": "Address announced to the machine (optional)"
         }
@@ -368,6 +372,13 @@
         "hot_water": "Hot Water",
         "latte_macchiato": "Latte Macchiato",
         "long_coffee": "Long Coffee"
+      }
+    },
+    "connection": {
+      "options": {
+        "auto": "Automatic (local first)",
+        "lan": "Local only",
+        "cloud": "De'Longhi cloud only"
       }
     }
   }

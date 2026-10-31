@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from aioecam.cloud.api import AylaCloud
+from aioecam.cloud.link import CloudLink
 from aioecam.device import EcamDevice
 from aioecam.lan.link import LanLink
 from aioecam.lan.server import LanServer
@@ -27,7 +28,7 @@ if TYPE_CHECKING:
 @dataclass
 class RuntimeData:
     device: EcamDevice
-    link: LanLink
+    link: LanLink | CloudLink
     coordinator: EcamCoordinator
     statistics_coordinator: StatisticsCoordinator | None
     cloud: AylaCloud | None

@@ -27,6 +27,9 @@ _LOGGER = logging.getLogger(__name__)
 
 SCAN_INTERVAL_AWAKE = timedelta(seconds=2)
 SCAN_INTERVAL_STANDBY = timedelta(seconds=30)
+# Cloud mode: the cloud link polls by itself and pushes changes; this is only
+# a slow safety read.
+SCAN_INTERVAL_CLOUD = timedelta(minutes=5)
 
 # Keep the last good state across a short run of failed reads so entities do
 # not flap to unavailable; a sustained outage still surfaces.
@@ -34,17 +37,26 @@ TRANSIENT_FAILURE_LIMIT = 2
 
 
 class EcamCoordinator(DataUpdateCoordinator[MonitorView]):
-    def __init__(self, hass: HomeAssistant, device: EcamDevice) -> None:
-        super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=SCAN_INTERVAL_AWAKE)
+    def __init__(self, hass: HomeAssistant, device: EcamDevice, *, cloud: bool = False) -> None:
+        super().__init__(
+            hass,
+            _LOGGER,
+            name=DOMAIN,
+            update_interval=SCAN_INTERVAL_CLOUD if cloud else SCAN_INTERVAL_AWAKE,
+        )
         self.device = device
+        self.cloud = cloud
         self.monitor_consecutive_failures = 0
         self._unsubscribe = device.subscribe(self._on_push)
 
     def _view(self, state: MachineState) -> MonitorView:
         view = MonitorView(state=state, profile=self.device.profile, received_at=dt_util.utcnow())
-        self.update_interval = (
-            SCAN_INTERVAL_STANDBY if state.status == 0 else SCAN_INTERVAL_AWAKE
-        )
+        if self.cloud:
+            self.update_interval = SCAN_INTERVAL_CLOUD
+        else:
+            self.update_interval = (
+                SCAN_INTERVAL_STANDBY if state.status == 0 else SCAN_INTERVAL_AWAKE
+            )
         return view
 
     @callback

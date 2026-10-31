@@ -1,7 +1,8 @@
 """Cremalink for Home Assistant: local-first control of De'Longhi Coffee Link machines.
 
 Talks to the machine directly over Ayla LAN mode through aioecam; the
-Cremalink Server add-on is no longer needed.
+Cremalink Server add-on is no longer needed. Machines without LAN mode run
+through the De'Longhi cloud instead (slower, fewer features).
 """
 
 from __future__ import annotations
@@ -12,21 +13,28 @@ from pathlib import Path
 from typing import Any
 
 from aioecam.cloud.api import AylaCloud
+from aioecam.cloud.link import CloudLink
 from aioecam.cloud.region import load_region
 from aioecam.device import EcamDevice
 from aioecam.ecam.profile import load_profile
-from aioecam.exceptions import NotConnected
+from aioecam.exceptions import EcamError, NotConnected
+from aioecam.lan.link import LanLink
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.typing import ConfigType
 
 from .const import (
     DOMAIN,
+    CLOUD_FAST_INTERVAL,
+    CLOUD_KEEPALIVE_INTERVAL,
+    CLOUD_POLL_INTERVAL,
     CONF_ADVERTISE_IP,
+    CONF_CONNECTION,
     CONF_DEVICE_IP,
     CONF_DSN,
     CONF_KEY_ID,
@@ -34,6 +42,8 @@ from .const import (
     CONF_LAN_PORT,
     CONF_PROFILE,
     CONF_REFRESH_TOKEN,
+    CONNECTION_AUTO,
+    CONNECTION_CLOUD,
     DEFAULT_LAN_PORT,
     DEFAULT_PROFILE,
     LEGACY_CONF_ADDON_URL,
@@ -71,59 +81,90 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
 
 
+def _use_cloud(entry: CremalinkConfigEntry) -> bool:
+    """LAN first: the cloud only when forced or when there is no LAN key."""
+    mode = entry.options.get(CONF_CONNECTION, CONNECTION_AUTO)
+    return mode == CONNECTION_CLOUD or (
+        mode == CONNECTION_AUTO and not entry.data.get(CONF_LAN_KEY)
+    )
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: CremalinkConfigEntry) -> bool:
     data = entry.data
-    if not data.get(CONF_LAN_KEY):
-        # Migrated cloud-only entry: needs a login once to fetch the LAN key.
-        raise ConfigEntryAuthFailed("no LAN key stored; sign in again to fetch it")
+    use_cloud = _use_cloud(entry)
+    if use_cloud and not data.get(CONF_REFRESH_TOKEN):
+        # Cloud mode, or a migrated cloud-only entry: needs a login once.
+        raise ConfigEntryAuthFailed("no LAN key and no cloud sign-in stored; sign in again")
+    if not use_cloud and not data.get(CONF_LAN_KEY):
+        raise ConfigEntryAuthFailed("local connection chosen but no LAN key; sign in again")
 
-    server = await async_acquire_server(
-        hass,
-        entry.entry_id,
-        entry.options.get(CONF_LAN_PORT, DEFAULT_LAN_PORT),
-        entry.options.get(CONF_ADVERTISE_IP) or None,
-    )
-    link = server.add_link(
-        device_ip=data[CONF_DEVICE_IP],
-        lan_key=data[CONF_LAN_KEY],
-        dsn=data[CONF_DSN],
-        key_id=data.get(CONF_KEY_ID),
-    )
+    cloud = None
+    if data.get(CONF_REFRESH_TOKEN):
 
-    try:
-        cloud = None
-        if data.get(CONF_REFRESH_TOKEN):
-
-            def _store_token(token: str) -> None:
-                # Persist the rotating token. This must not reload the entry: only
-                # option changes do (OptionsFlowWithReload), otherwise every token
-                # refresh would restart the integration in a loop.
-                hass.config_entries.async_update_entry(
-                    entry, data={**entry.data, CONF_REFRESH_TOKEN: token}
-                )
-
-            cloud = AylaCloud(
-                async_get_clientsession(hass),
-                load_region("eu"),
-                data[CONF_REFRESH_TOKEN],
-                on_refresh_token=_store_token,
+        def _store_token(token: str) -> None:
+            # Persist the rotating token. This must not reload the entry: only
+            # option changes do (OptionsFlowWithReload), otherwise every token
+            # refresh would restart the integration in a loop.
+            hass.config_entries.async_update_entry(
+                entry, data={**entry.data, CONF_REFRESH_TOKEN: token}
             )
 
-        profile = load_profile(data.get(CONF_PROFILE, DEFAULT_PROFILE))
-        device = EcamDevice(link, profile, cloud=cloud)
+        cloud = AylaCloud(
+            async_get_clientsession(hass),
+            load_region("eu"),
+            data[CONF_REFRESH_TOKEN],
+            on_refresh_token=_store_token,
+        )
+    profile = load_profile(data.get(CONF_PROFILE, DEFAULT_PROFILE))
+
+    link: LanLink | CloudLink
+    if use_cloud:
+        assert cloud is not None
+        link = CloudLink(
+            cloud,
+            dsn=data[CONF_DSN],
+            device_ip=data.get(CONF_DEVICE_IP),
+            watch=[profile.monitor_property, profile.properties["data_response"]],
+            interval=CLOUD_POLL_INTERVAL,
+            fast_interval=CLOUD_FAST_INTERVAL,
+        )
+        link.start()
+    else:
+        server = await async_acquire_server(
+            hass,
+            entry.entry_id,
+            entry.options.get(CONF_LAN_PORT, DEFAULT_LAN_PORT),
+            entry.options.get(CONF_ADVERTISE_IP) or None,
+        )
+        link = server.add_link(
+            device_ip=data[CONF_DEVICE_IP],
+            lan_key=data[CONF_LAN_KEY],
+            dsn=data[CONF_DSN],
+            key_id=data.get(CONF_KEY_ID),
+        )
+
+    try:
+        # In cloud mode the link is the cloud: no separate wake fallback.
+        device = EcamDevice(link, profile, cloud=None if use_cloud else cloud)
         try:
-            await link.wait_active(15)
+            await link.wait_active(20 if use_cloud else 15)
         except NotConnected as err:
+            if isinstance(link, CloudLink):
+                raise ConfigEntryNotReady(f"no connection through the cloud: {err}") from err
             hint = ""
             if link.stats.last_registration_status == 404:
                 hint = " (the Wi-Fi module refuses LAN mode until it has reached the cloud)"
             raise ConfigEntryNotReady(f"no LAN session with the machine{hint}") from err
 
-        coordinator = EcamCoordinator(hass, device)
+        if use_cloud:
+            await _async_start_cloud_keepalive(hass, entry, device)
+
+        coordinator = EcamCoordinator(hass, device, cloud=use_cloud)
         await coordinator.async_config_entry_first_refresh()
 
+        # Cloud mode skips the features that cost many cloud requests.
         statistics = None
-        if statistics_supported(device):
+        if not use_cloud and statistics_supported(device):
             statistics = StatisticsCoordinator(hass, device, cloud)
             # Optional and slower than the status; do not hold up setup.
             entry.async_create_background_task(
@@ -131,7 +172,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: CremalinkConfigEntry) ->
             )
 
         settings = None
-        if settings_supported(device):
+        if not use_cloud and settings_supported(device):
             settings = SettingsCoordinator(hass, device)
             entry.async_on_unload(settings.follow(coordinator))
             # Readable in standby; do not hold up setup.
@@ -147,7 +188,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: CremalinkConfigEntry) ->
             settings_coordinator=settings,
             cloud=cloud,
             recipe_reader=RecipeReader(device, coordinator.async_update_listeners)
-            if recipe_reads_supported(device) else None,
+            if not use_cloud and recipe_reads_supported(device) else None,
         )
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
         # Diagnostic only; do not hold up setup.
@@ -159,19 +200,42 @@ async def async_setup_entry(hass: HomeAssistant, entry: CremalinkConfigEntry) ->
         # Any failed setup, including a timed-out first refresh or cancellation,
         # must release the link and our share of the LAN server; otherwise the
         # retry registers on top of a leftover link (Codex review A3).
-        await server.remove_link(data[CONF_DEVICE_IP])
-        await async_release_server(hass, entry.entry_id)
+        await _async_release_link(hass, entry, link)
         raise
+
+
+async def _async_start_cloud_keepalive(
+    hass: HomeAssistant, entry: CremalinkConfigEntry, device: EcamDevice
+) -> None:
+    """Without it the cloud stops relaying commands after about 5 minutes."""
+
+    async def _keep(_now: Any = None) -> None:
+        try:
+            await device.keep_cloud_session()
+        except EcamError as err:
+            _LOGGER.debug("cloud keep-alive failed: %s", err)
+
+    await _keep()
+    entry.async_on_unload(async_track_time_interval(hass, _keep, CLOUD_KEEPALIVE_INTERVAL))
+
+
+async def _async_release_link(
+    hass: HomeAssistant, entry: CremalinkConfigEntry, link: LanLink | CloudLink
+) -> None:
+    if isinstance(link, CloudLink):
+        await link.close()
+        return
+    hass_data = hass.data.get(DOMAIN, {})
+    if "lan" in hass_data:
+        await hass_data["lan"].server.remove_link(link.device_ip)
+    await async_release_server(hass, entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: CremalinkConfigEntry) -> bool:
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
-        runtime = entry.runtime_data
         # Home Assistant shuts the coordinators down itself.
-        server = hass.data[DOMAIN]["lan"].server
-        await server.remove_link(runtime.link.device_ip)
-        await async_release_server(hass, entry.entry_id)
+        await _async_release_link(hass, entry, entry.runtime_data.link)
     return unloaded
 
 
