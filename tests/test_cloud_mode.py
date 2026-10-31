@@ -175,6 +175,10 @@ async def test_offline_machine_turns_entities_unavailable(
         if hass.states.get(status).state == "unavailable":
             break
     assert hass.states.get(status).state == "unavailable"
+    # The next safety read must not bring the old values back.
+    await entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get(status).state == "unavailable"
     memory.status = "Online"
     for _ in range(40):
         await asyncio.sleep(0.05)

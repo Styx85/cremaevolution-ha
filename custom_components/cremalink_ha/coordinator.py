@@ -85,6 +85,10 @@ class EcamCoordinator(DataUpdateCoordinator[MonitorView]):
         if getattr(getattr(self.device.link, "stats", None), "auth_failed", False):
             # Cloud mode: a revoked sign-in only comes back with a new login.
             raise ConfigEntryAuthFailed("the cloud rejected the sign-in")
+        if self.cloud and self.device.link.state is not LinkState.ACTIVE:
+            # Offline in the cloud: the cloud's last values are not the
+            # machine's state, so no grace period with them.
+            raise UpdateFailed(f"cloud link {self.device.link.state}")
         try:
             # The timeout covers the whole request including the module fetching
             # it (aioecam >= 0.1.2b1), so leave room for a slow Wi-Fi round trip.
