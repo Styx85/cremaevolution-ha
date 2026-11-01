@@ -128,8 +128,9 @@ does. It is slower and does less:
 local key is stored and the cloud otherwise; *Local only* and *De'Longhi
 cloud only* force one. Status reads through the cloud were tested on a
 PrimaDonna Soul. On an Eletta Explore an owner confirmed power on, a coffee
-and power off through the cloud with 0.3.7b1; that 0.3.8b1 (which adopts the
-Coffee Link app's session id) works the same is not confirmed yet.
+and power off through the cloud with 0.3.7b1 and 0.3.8b1. On that machine
+no other session id was found (`session_id_source: default`), so adopting the
+Coffee Link app's id has not been exercised on hardware yet.
 
 ### Good to know
 
