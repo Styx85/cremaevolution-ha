@@ -297,10 +297,11 @@ async def test_product_code_on_the_device_and_serial_kept_private(
     await hass.async_block_till_done(wait_background_tasks=True)
     (device,) = dr.async_entries_for_config_entry(dr.async_get(hass), entry.entry_id)
     assert device.model_id == "123456"
-    identity = (await async_get_config_entry_diagnostics(hass, entry))["identity"]
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+    identity = diagnostics["identity"]
     assert (identity["sku"], identity["variant"], identity["production_date"]) == (
         "123456", "ZZ", "2025-07-01")
-    assert "9876" not in str(identity)
+    assert "Q9876" not in str(diagnostics) and "d270" not in str(diagnostics)
 
 
 async def test_unknown_serial_format_is_harmless(hass: HomeAssistant, machine: FakeMachine) -> None:
