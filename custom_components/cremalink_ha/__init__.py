@@ -57,7 +57,7 @@ from .const import (
     LEGACY_DEVICE_MAP_TO_PROFILE,
 )
 from .coordinator import EcamCoordinator
-from .firmware import async_update_firmware
+from .firmware import async_update_firmware, async_update_serial_info
 from .recipe_reader import RecipeReader, supported as recipe_reads_supported
 from .runtime import RuntimeData, async_acquire_server, async_release_server
 from .services import async_setup_services
@@ -203,6 +203,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: CremalinkConfigEntry) ->
         # Diagnostic only; do not hold up setup.
         entry.async_create_background_task(
             hass, async_update_firmware(hass, entry, device), "cremalink firmware version"
+        )
+        entry.async_create_background_task(
+            hass, async_update_serial_info(hass, entry, device), "cremalink serial information"
         )
         return True
     except BaseException:

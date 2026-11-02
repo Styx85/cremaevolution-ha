@@ -41,3 +41,23 @@ async def async_update_firmware(hass: HomeAssistant, entry: ConfigEntry, device:
         manufacturer=MANUFACTURER,
         sw_version=value,
     )
+
+
+async def async_update_serial_info(
+    hass: HomeAssistant, entry: ConfigEntry, device: EcamDevice
+) -> None:
+    """Show the product code as the device's model ID; read once per setup."""
+    try:
+        info = await device.read_serial(timeout=10)
+    except (EcamError, TimeoutError) as err:
+        _LOGGER.debug("serial information not available: %s", err)
+        return
+    if info is None:
+        return
+    dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, entry.entry_id)},
+        name=entry.title,
+        manufacturer=MANUFACTURER,
+        model_id=info.sku,
+    )

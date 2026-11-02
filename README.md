@@ -165,6 +165,9 @@ Coffee Link app's id has not been exercised on hardware yet.
   select shows the last profile chosen in Home Assistant and acknowledged by
   the machine. Changing it is refused in standby.
 - **Firmware** in the device info: the machine's `software_version` string.
+- **Model ID** in the device info: the product code from the machine's serial
+  number. The diagnostics add its variant and production date. The rest of the
+  serial, which identifies the single machine, is not kept.
 - **English and German** entity and command names.
 
 ### Custom amounts: `cremalink_ha.brew_custom`

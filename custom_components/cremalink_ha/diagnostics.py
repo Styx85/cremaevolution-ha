@@ -49,6 +49,10 @@ async def async_get_config_entry_diagnostics(
             "model": device.machine_info.get("d561_machine_model"),
             "firmware": device.machine_info.get("software_version")
             or device.machine_info.get("d560_versione_sw"),
+            "sku": None if device.serial_info is None else device.serial_info.sku,
+            "variant": None if device.serial_info is None else device.serial_info.variant,
+            "production_date": None if device.serial_info is None
+            else device.serial_info.production_date.isoformat(),
             "configured_protocol_family": device.profile.family,
             "oem_model": entry.data.get("oem_model"),
             "oem_model_source": "onboarding" if entry.data.get("oem_model") else None,

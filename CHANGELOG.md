@@ -4,6 +4,19 @@ Newest first. Release notes with downloads are on the
 [releases page](https://github.com/Styx85/cremaevolution-ha/releases); versions
 before 0.3 are listed there only.
 
+## 0.3.9b1: Product code and production date
+
+Uses aioecam 0.1.7b1.
+
+- The device info shows the machine's product code as its model ID (read once
+  per setup from `d270_serialnumber`, e.g. `217055` on an ECAM610.75). The
+  diagnostics add its variant and production date.
+- The letter and production number of the serial, which identify the single
+  machine, are not kept. Machines with another serial format simply show none
+  of this. The format follows
+  [delonghi-ha](https://github.com/sk7n4k3d/delonghi-ha); checked on an
+  ECAM610.75 through the cloud.
+
 ## 0.3.8b1: Eletta in cloud mode uses the app's session id
 
 Uses aioecam 0.1.6b1.
