@@ -7,6 +7,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -208,8 +209,6 @@ async def test_offline_module_state_follows_via_monitor_requests(
 
 
 async def test_firmware_version_on_the_device(hass: HomeAssistant, machine: FakeMachine) -> None:
-    from homeassistant.helpers import device_registry as dr
-
     machine.device.properties["software_version"] = "Millcore_demo 2.0.0 Jun 18 2020"
     entry = await _setup(hass)
     await hass.async_block_till_done(wait_background_tasks=True)
@@ -220,7 +219,6 @@ async def test_firmware_version_on_the_device(hass: HomeAssistant, machine: Fake
 async def test_missing_firmware_property_is_harmless(
     hass: HomeAssistant, machine: FakeMachine
 ) -> None:
-    from homeassistant.helpers import device_registry as dr
 
     machine.device.properties.pop("software_version", None)
     entry = await _setup(hass)
@@ -283,3 +281,33 @@ async def test_failed_setup_releases_link_and_server(hass: HomeAssistant, machin
     await hass.async_block_till_done()
     assert entry.state is ConfigEntryState.LOADED
     assert len(hass.data[DOMAIN]["lan"].server._links) == 1
+
+
+async def test_product_code_on_the_device_and_serial_kept_private(
+    hass: HomeAssistant, machine: FakeMachine
+) -> None:
+    from aioecam.ecam.frame import RESPONSE, Frame
+    from aioecam.ecam.value import encode_value
+    from custom_components.cremalink_ha.diagnostics import async_get_config_entry_diagnostics
+
+    machine.device.properties["d270_serialnumber"] = encode_value(
+        Frame(RESPONSE, 0xA1, 0x0F, b"\x00\x11123456ZZ250701Q9876\x00")
+    )
+    entry = await _setup(hass)
+    await hass.async_block_till_done(wait_background_tasks=True)
+    (device,) = dr.async_entries_for_config_entry(dr.async_get(hass), entry.entry_id)
+    assert device.model_id == "123456"
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+    identity = diagnostics["identity"]
+    assert (identity["sku"], identity["variant"], identity["production_date"]) == (
+        "123456", "ZZ", "2025-07-01")
+    assert "Q9876" not in str(diagnostics) and "d270" not in str(diagnostics)
+
+
+async def test_unknown_serial_format_is_harmless(hass: HomeAssistant, machine: FakeMachine) -> None:
+    machine.device.properties["d270_serialnumber"] = "ECAM61075MB12345"
+    entry = await _setup(hass)
+    await hass.async_block_till_done(wait_background_tasks=True)
+    (device,) = dr.async_entries_for_config_entry(dr.async_get(hass), entry.entry_id)
+    assert device.model_id is None
+    assert entry.runtime_data.device.serial_info is None
