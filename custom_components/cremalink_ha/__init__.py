@@ -175,6 +175,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: CremalinkConfigEntry) ->
         statistics = None
         if not use_cloud and statistics_supported(device):
             statistics = StatisticsCoordinator(hass, device, cloud)
+            entry.async_on_unload(statistics.follow(coordinator))
             # Optional and slower than the status; do not hold up setup.
             entry.async_create_background_task(
                 hass, statistics.async_refresh(), "cremalink initial statistics"

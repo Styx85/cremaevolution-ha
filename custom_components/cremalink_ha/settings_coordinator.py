@@ -1,8 +1,11 @@
 """Writable machine settings (auto-off, water hardness).
 
-Settings are read with ``0x95`` and work in standby too, so they are polled
-slowly and independently of the machine state. Writes go through aioecam,
-which announces the write session and confirms each write by reading it back.
+Settings are read with ``0x95``. Every read is a property write to the Wi-Fi
+module, and each one makes the module open a TLS connection to the Ayla cloud
+(#36). Settings only change at the display while the machine is awake, so in
+standby they are read once after the machine was awake and then left alone.
+Writes go through aioecam, which announces the write session and confirms
+each write by reading it back.
 """
 
 from __future__ import annotations
@@ -25,8 +28,9 @@ from .const import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 # Settings can only be changed at the display while the machine is awake, so
-# follow them closely then; in standby a slow poll is enough. A read lost
-# while the machine is busy (e.g. rinsing) is retried in the next round.
+# follow them closely then. In standby the interval only decides how soon the
+# read after waking up happens; nothing is read while nothing can change. A
+# read lost while the machine is busy (e.g. rinsing) is retried next round.
 SETTINGS_INTERVAL_AWAKE = timedelta(seconds=60)
 SETTINGS_INTERVAL_STANDBY = timedelta(minutes=15)
 
@@ -45,10 +49,20 @@ class SettingsCoordinator(DataUpdateCoordinator[dict[str, int | None]]):
         # not publish after a confirmed write (Codex review A6).
         self._lock = asyncio.Lock()
         self._was_awake = False
+        # Counts the status updates that showed the machine awake. A standby
+        # read is skipped while nothing was seen awake since the last complete
+        # read; a wake during a read keeps the next one due.
+        self._awake_seen = 0
+        self._read_at = -1  # _awake_seen when the last complete standby read began
+        self.standby_reads_skipped = 0
 
     def _awake(self) -> bool:
         state = self.device.state
         return state is not None and state.status != 0
+
+    def _standby(self) -> bool:
+        state = self.device.state
+        return state is not None and state.status == 0
 
     def _adjust_interval(self) -> None:
         self.update_interval = SETTINGS_INTERVAL_AWAKE if self._awake() else SETTINGS_INTERVAL_STANDBY
@@ -63,6 +77,8 @@ class SettingsCoordinator(DataUpdateCoordinator[dict[str, int | None]]):
         @callback
         def _status_changed() -> None:
             awake = self._awake()
+            if awake:
+                self._awake_seen += 1
             if awake and not self._was_awake:
                 self.update_interval = SETTINGS_INTERVAL_AWAKE
                 self.hass.async_create_task(self.async_request_refresh())
@@ -76,6 +92,11 @@ class SettingsCoordinator(DataUpdateCoordinator[dict[str, int | None]]):
 
     async def _read_all(self) -> dict[str, int | None]:
         self._adjust_interval()
+        standby = self._standby()
+        began = self._awake_seen
+        if standby and self.data is not None and self._read_at == began:
+            self.standby_reads_skipped += 1
+            return self.data
         values: dict[str, int | None] = dict(self.data or {})
         errors = []
         for key in self.device.profile.settings:
@@ -89,10 +110,15 @@ class SettingsCoordinator(DataUpdateCoordinator[dict[str, int | None]]):
             raise UpdateFailed("; ".join(errors))
         if errors:
             _LOGGER.debug("some settings could not be read: %s", "; ".join(errors))
+        elif standby:
+            self._read_at = began
         return values
 
     async def async_write(self, key: str, value: int) -> None:
         """Write a setting; aioecam confirms it by reading it back."""
         async with self._lock:
+            # A write that reaches the machine but fails to confirm must not
+            # leave a stale value cached until the next wake-up.
+            self._read_at = -1
             await self.device.write_setting(key, value)
             self.async_set_updated_data({**(self.data or {}), key: value})

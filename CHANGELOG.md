@@ -4,6 +4,21 @@ Newest first. Release notes with downloads are on the
 [releases page](https://github.com/Styx85/cremaevolution-ha/releases); versions
 before 0.3 are listed there only.
 
+## 0.3.12b1: No statistics and settings reads in standby
+
+Uses aioecam 0.1.7b1.
+
+- In standby the lifetime statistics and the settings are no longer read
+  every 10 and 15 minutes. They are read once after the machine was awake
+  and then left alone, because they can only change while it is awake. The
+  statistics button still reads at any time.
+- Each of these reads made the Wi-Fi module open a TLS connection to the Ayla
+  cloud, each followed by a short check-in about a minute later. After
+  0.3.10b1 they made up about half of the remaining cloud connections, about
+  50 an hour in standby on an ECAM610.75
+  ([#36](https://github.com/Styx85/cremaevolution-ha/issues/36)).
+- Diagnostics count the skipped standby reads.
+
 ## 0.3.11b1: Rejected sign-ins are logged
 
 Uses aioecam 0.1.7b1.
