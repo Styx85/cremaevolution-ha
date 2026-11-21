@@ -1,0 +1,6 @@
+[Unit]
+Description=End the coffee machine measurement
+
+[Service]
+Type=oneshot
+ExecStart=/root/ecam-capture/stop.sh

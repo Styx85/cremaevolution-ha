@@ -1,0 +1,12 @@
+[Unit]
+Description=Coffee machine Wi-Fi module capture (FRITZ!Box, filtered)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/root/ecam-capture/capture.sh
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
