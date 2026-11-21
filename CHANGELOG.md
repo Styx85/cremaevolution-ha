@@ -4,6 +4,16 @@ Newest first. Release notes with downloads are on the
 [releases page](https://github.com/Styx85/cremaevolution-ha/releases); versions
 before 0.3 are listed there only.
 
+## 0.3.11b1: Rejected sign-ins are logged
+
+Uses aioecam 0.1.7b1.
+
+- When the De'Longhi sign-in fails, the debug log now says which login step
+  failed and Gigya's error code, e.g. `403042` for a wrong email or password.
+  Before, the form only said "Email or password is wrong" and nothing was
+  logged ([#37](https://github.com/Styx85/cremaevolution-ha/issues/37)).
+  Passwords and tokens are never logged.
+
 ## 0.3.10b1: Far less cloud traffic in standby
 
 Uses aioecam 0.1.7b1.
