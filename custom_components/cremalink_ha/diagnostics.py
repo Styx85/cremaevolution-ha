@@ -43,6 +43,7 @@ async def async_get_config_entry_diagnostics(
             "last_update_success": settings.last_update_success,
             "update_interval_seconds": settings.update_interval.total_seconds()
             if settings.update_interval else None,
+            "standby_reads_skipped": settings.standby_reads_skipped,
         },
         "identity": {
             "transport": "ayla_lan",
@@ -102,6 +103,7 @@ async def async_get_config_entry_diagnostics(
             "known": statistics.data.get("known"),
             "unknown_count": len(statistics.data.get("unknown", {})),
             "snapshot_fetched_at": statistics.data.get("snapshot_fetched_at"),
+            "standby_reads_skipped": statistics.standby_reads_skipped,
         },
     }
 

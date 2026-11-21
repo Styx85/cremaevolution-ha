@@ -139,7 +139,8 @@ async def test_hot_water_updates_and_retires_incorrect_tea_entity(
 
     # Reproduce the operator's hot-water observation; A2 ID 3018 stays zero.
     machine.statistics[3019] = 3
-    await stats.async_refresh()
+    # The fake machine is in standby, where only a manual refresh reads (#36).
+    await stats.async_force_refresh()
     await hass.async_block_till_done()
     assert hass.states.get(water_id).state == "3"
     assert stats.data["unknown"][3018] == 0
