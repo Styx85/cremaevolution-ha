@@ -25,7 +25,8 @@ otherwise).
 1. Copy `capture.env.example` to `capture.env` and fill in the module's MAC
    address, the box address and the Home Assistant SSH login.
 2. Create `fritz.cred` with `FRITZ_USER=...` and `FRITZ_PASS=...` for a
-   FRITZ!Box user with the right to use the packet capture.
+   FRITZ!Box user with the right to use the packet capture (FRITZ!OS 7.24
+   or later for the PBKDF2 login).
 3. Put a dedicated SSH key for the Home Assistant SSH add-on in `ha_key`.
    Its host key goes in `known_hosts`.
 4. `chmod 600 capture.env fritz.cred ha_key` and `mkdir pcap halog`.

@@ -33,13 +33,13 @@ def creds() -> tuple[str, str]:
 
 
 def answer(challenge: str, password: str) -> str:
-    if challenge.startswith("2$"):
-        _, iter1, salt1, iter2, salt2 = challenge.split("$")
-        hash1 = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt1), int(iter1))
-        hash2 = hashlib.pbkdf2_hmac("sha256", hash1, bytes.fromhex(salt2), int(iter2))
-        return f"{salt2}${hash2.hex()}"
-    digest = hashlib.md5(f"{challenge}-{password}".encode("utf-16le")).hexdigest()
-    return f"{challenge}-{digest}"
+    """PBKDF2 challenge response (login_sid.lua version 2, FRITZ!OS 7.24 and later)."""
+    if not challenge.startswith("2$"):
+        sys.exit("fritz_capture: the box offers no PBKDF2 login; FRITZ!OS 7.24 or later is needed")
+    _, iter1, salt1, iter2, salt2 = challenge.split("$")
+    hash1 = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt1), int(iter1))
+    hash2 = hashlib.pbkdf2_hmac("sha256", hash1, bytes.fromhex(salt2), int(iter2))
+    return f"{salt2}${hash2.hex()}"
 
 
 def login() -> str:
