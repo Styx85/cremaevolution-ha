@@ -98,7 +98,7 @@ async def _async_brew_custom(call: ServiceCall) -> None:
         raise ServiceValidationError(str(err)) from err
     except EcamError as err:
         raise HomeAssistantError(f"Could not start {beverage}: {err}") from err
-    await runtime.coordinator.async_request_refresh()
+    await runtime.coordinator.async_request_fresh_state()
 
 
 def async_setup_services(hass: HomeAssistant) -> None:

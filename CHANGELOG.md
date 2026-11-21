@@ -4,6 +4,22 @@ Newest first. Release notes with downloads are on the
 [releases page](https://github.com/Styx85/cremaevolution-ha/releases); versions
 before 0.3 are listed there only.
 
+## 0.3.10b1: Far less cloud traffic in standby
+
+Uses aioecam 0.1.7b1.
+
+- In standby the integration now reads the machine's state plainly and sends
+  a monitor request only every 5 minutes, after a command and after the local
+  connection was set up again. Each monitor request made the Wi-Fi module open
+  a new TLS connection to the Ayla cloud, about 2,300 a day
+  ([#36](https://github.com/Styx85/cremaevolution-ha/issues/36)). Plain reads
+  stay on the LAN.
+- Measured on an ECAM610.75: with plain reads in standby, no cloud connection;
+  switching on at the panel showed up within 3 s. Without internet access the
+  module does not publish such changes, so a panel switch-on can then take up
+  to 5 minutes to show.
+- Diagnostics count monitor requests and plain reads.
+
 ## 0.3.9b1: Product code and production date
 
 Uses aioecam 0.1.7b1.

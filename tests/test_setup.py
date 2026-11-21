@@ -12,6 +12,7 @@ from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.cremalink_ha.const import DOMAIN
+from custom_components.cremalink_ha.coordinator import STANDBY_MONITOR_REQUEST_INTERVAL
 from tests.conftest import V2_DATA
 from tests.fakes.fake_machine import FakeMachine
 
@@ -199,13 +200,55 @@ async def test_offline_module_state_follows_via_monitor_requests(
     machine.publish_on_request_only = True
     machine.publish_delay = 0.4
     entry = await _setup(hass)
+    coordinator = entry.runtime_data.coordinator
     switch = _entity(hass, entry, "switch:power")
     assert hass.states.get(switch).state == "off"
     await machine._set(7)  # switched on at the display
-    await entry.runtime_data.coordinator.async_refresh()
+    # In standby a poll right after a monitor request is a plain read: stale.
+    requests = machine.monitor_requests
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get(switch).state == "off"
+    assert machine.monitor_requests == requests
+    # Once the standby interval has passed, the next poll asks again.
+    coordinator._last_monitor_request -= STANDBY_MONITOR_REQUEST_INTERVAL
+    await coordinator.async_refresh()
     await hass.async_block_till_done()
     assert hass.states.get(switch).state == "on"
-    assert machine.monitor_requests >= 1
+    assert machine.monitor_requests > requests
+
+
+async def test_standby_polls_read_without_writing(
+    hass: HomeAssistant, machine: FakeMachine
+) -> None:
+    # Every monitor request is a write the module echoes to the cloud (#36);
+    # with the cloud reachable a plain read already shows a panel switch-on.
+    entry = await _setup(hass)
+    coordinator = entry.runtime_data.coordinator
+    switch = _entity(hass, entry, "switch:power")
+    assert hass.states.get(switch).state == "off"
+    requests, reads = machine.monitor_requests, coordinator.plain_reads
+    for _ in range(3):
+        await coordinator.async_refresh()
+    assert machine.monitor_requests == requests
+    assert coordinator.plain_reads == reads + 3
+    await machine._set(7)
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get(switch).state == "on"
+    assert machine.monitor_requests == requests
+
+
+async def test_fresh_state_after_a_command_asks_in_standby(
+    hass: HomeAssistant, machine: FakeMachine
+) -> None:
+    machine.publish_on_request_only = True
+    entry = await _setup(hass)
+    coordinator = entry.runtime_data.coordinator
+    requests = machine.monitor_requests
+    await coordinator.async_request_fresh_state()
+    await hass.async_block_till_done()
+    assert machine.monitor_requests == requests + 1
 
 
 async def test_firmware_version_on_the_device(hass: HomeAssistant, machine: FakeMachine) -> None:

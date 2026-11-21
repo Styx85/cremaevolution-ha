@@ -72,6 +72,8 @@ async def async_get_config_entry_diagnostics(
             "last_monitor_error_at": stamp(device.last_monitor_error_at),
             "last_monitor_error": device.last_monitor_error,
             "consecutive_query_failures": runtime.coordinator.monitor_consecutive_failures,
+            "monitor_requests": runtime.coordinator.monitor_requests,
+            "plain_reads": runtime.coordinator.plain_reads,
             "semantics": "receipt/query success does not prove new machine state; standby may cache",
         },
         "recipe_catalog": device.catalog.snapshot(),
