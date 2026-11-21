@@ -103,7 +103,10 @@ class CremalinkConfigFlow(ConfigFlow, domain=DOMAIN):
         """Run onboarding; returns form errors (empty on success)."""
         try:
             result = await onboard(async_get_clientsession(self.hass), email, password)
-        except AuthError:
+        except AuthError as err:
+            # The message names the login step and Gigya's error code (e.g. 403042
+            # for a wrong password); aioecam never puts credentials or tokens in it.
+            _LOGGER.debug("sign-in rejected: %s", err)
             return {"base": "invalid_auth"}
         except (aiohttp.ClientError, TimeoutError, EcamError) as err:
             _LOGGER.debug("onboarding failed: %s", err)

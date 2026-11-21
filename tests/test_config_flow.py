@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -76,6 +77,20 @@ async def test_login_errors(hass: HomeAssistant, side_effect: Exception, error: 
         result = await _start(hass)
         result = await hass.config_entries.flow.async_configure(result["flow_id"], LOGIN)
     assert result["type"] is FlowResultType.FORM and result["errors"] == {"base": error}
+
+
+async def test_rejected_login_is_logged(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG, logger="custom_components.cremalink_ha")
+    rejected = AuthError("login rejected (Gigya error 403042)")
+    with patch(f"{FLOW}.onboard", AsyncMock(side_effect=rejected)):
+        result = await _start(hass)
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], LOGIN)
+    assert result["errors"] == {"base": "invalid_auth"}
+    assert "sign-in rejected: login rejected (Gigya error 403042)" in caplog.text
+    assert LOGIN["password"] not in caplog.text
+    assert LOGIN["email"] not in caplog.text
 
 
 async def test_machine_without_lan_key_offers_the_cloud(hass: HomeAssistant) -> None:
