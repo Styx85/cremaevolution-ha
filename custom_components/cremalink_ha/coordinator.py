@@ -1,11 +1,20 @@
 """Machine state coordinator.
 
 The machine does not reliably push changes, so the coordinator polls: fast
-while the machine is awake, slow in standby. Each poll is an explicit monitor
-request (0x75) that waits for a fresh frame: with its internet access blocked
-the Wi-Fi module published no state changes at all, and a plain read kept
-returning the frame from before a wake-up (measured 2026-10-19). Pushes that
-do arrive are applied immediately.
+while the machine is awake, slow in standby. While awake each poll is an
+explicit monitor request (0x75) that waits for a fresh frame: with its
+internet access blocked the Wi-Fi module published no state changes at all,
+and a plain read kept returning the frame from before a wake-up (measured
+2026-10-19). Pushes that do arrive are applied immediately.
+
+In standby the coordinator reads the monitor property plainly and sends a
+monitor request only every few minutes, after a command and after the LAN
+session was set up again. Every monitor request is a write to the module,
+and the module opens a new TLS connection to the Ayla cloud for each write
+(about 2,300 a day at one request per 30 s, issue #36); plain reads stay on
+the LAN. While the module reaches the cloud, a plain read showed switching on
+at the panel within 3 s (measured 2026-11-21). Without internet access it
+does not, so the occasional monitor request remains the fallback there.
 """
 
 from __future__ import annotations
@@ -29,6 +38,8 @@ _LOGGER = logging.getLogger(__name__)
 
 SCAN_INTERVAL_AWAKE = timedelta(seconds=2)
 SCAN_INTERVAL_STANDBY = timedelta(seconds=30)
+# In standby, polls between these monitor requests are plain reads.
+STANDBY_MONITOR_REQUEST_INTERVAL = timedelta(minutes=5)
 # Cloud mode: the cloud link polls by itself and pushes changes; this is only
 # a slow safety read.
 SCAN_INTERVAL_CLOUD = timedelta(minutes=5)
@@ -49,12 +60,17 @@ class EcamCoordinator(DataUpdateCoordinator[MonitorView]):
         self.device = device
         self.cloud = cloud
         self.monitor_consecutive_failures = 0
+        self.monitor_requests = 0
+        self.plain_reads = 0
+        # None: the next poll sends a monitor request whatever the state.
+        self._last_monitor_request = None
         self._unsubscribe = device.subscribe(self._on_push)
         self._unsubscribe_link = lambda: None
         on_state = getattr(device.link, "on_state", None)
-        if cloud and on_state is not None:
-            # The cloud link knows within one poll when the machine went
+        if on_state is not None:
+            # Cloud: the link knows within one poll when the machine went
             # offline; do not show its last values for another 15 minutes.
+            # LAN: after a new registration the frame may be stale.
             self._unsubscribe_link = on_state(self._on_link_state)
 
     def _view(self, state: MachineState) -> MonitorView:
@@ -74,8 +90,24 @@ class EcamCoordinator(DataUpdateCoordinator[MonitorView]):
             self.monitor_consecutive_failures = 0
             self.async_set_updated_data(self._view(state))
 
+    async def async_request_fresh_state(self) -> None:
+        """Refresh with a monitor request even in standby (after a command)."""
+        self._last_monitor_request = None
+        await self.async_request_refresh()
+
+    def _needs_monitor_request(self) -> bool:
+        if self.cloud or self.data is None or self._last_monitor_request is None:
+            return True
+        if self.data.state.status != 0:
+            return True
+        return dt_util.utcnow() - self._last_monitor_request >= STANDBY_MONITOR_REQUEST_INTERVAL
+
     @callback
     def _on_link_state(self, state: LinkState) -> None:
+        if not self.cloud:
+            if state is LinkState.ACTIVE:
+                self._last_monitor_request = None
+            return
         if state is LinkState.ACTIVE:
             self.hass.async_create_task(self.async_request_refresh())
         elif state is not LinkState.CLOSED and self.last_update_success:
@@ -92,8 +124,16 @@ class EcamCoordinator(DataUpdateCoordinator[MonitorView]):
         try:
             # The timeout covers the whole request including the module fetching
             # it (aioecam >= 0.1.2b1), so leave room for a slow Wi-Fi round trip.
-            state = await self.device.request_monitor(timeout=5)
+            if self._needs_monitor_request():
+                state = await self.device.request_monitor(timeout=5)
+                self.monitor_requests += 1
+                self._last_monitor_request = dt_util.utcnow()
+            else:
+                state = await self.device.refresh(timeout=5)
+                self.plain_reads += 1
         except EcamError as err:
+            # Try a monitor request next time; a plain read may be the problem.
+            self._last_monitor_request = None
             self.monitor_consecutive_failures += 1
             if self.data is not None and self.monitor_consecutive_failures <= TRANSIENT_FAILURE_LIMIT:
                 _LOGGER.debug(

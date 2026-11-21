@@ -122,7 +122,7 @@ class CremalinkButton(CoordinatorEntity, ButtonEntity):
                 await self.device.brew(self._cmd)
         except EcamError as err:
             raise HomeAssistantError(f"{self._title}: {err}") from err
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_request_fresh_state()
 
 
 class CremalinkStatisticsRefreshButton(CoordinatorEntity, ButtonEntity):

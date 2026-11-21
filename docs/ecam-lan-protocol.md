@@ -234,9 +234,11 @@ beverage id), never by property name. Two quirks seen on the Soul:
   monitor request made the module publish the current state, about 1–2 s
   after it fetched the request (details in section 9). **So poll with
   monitor requests and wait for a newer payload timestamp**, not with plain
-  reads. **[open]** whether the module pushes changes by itself when it can
-  reach the cloud (raw-probe sessions on 2026-10-18 saw the monitor change
-  about every second while waking).
+  reads. **With the cloud reachable it does [measured, 2026-11-21]:** plain
+  reads every 3 s in standby showed a switch-on at the panel within 3 s, then
+  heating and rinsing live, and caused no cloud TLS connection. Each monitor
+  request, in contrast, is a write the module echoes to the cloud with a new
+  TLS connection (issue #36).
 - **[app]** Over Wi-Fi the Coffee Link app sends no monitor requests: it
   reads `d302_monitor` and reacts to the Ayla SDK's property-change
   notifications (locally or via the cloud), with a 60 s monitor timer. The
@@ -557,8 +559,6 @@ itself after a power cut.
 
 ## 10. Open questions
 
-- Does the module push monitor changes by itself when it can reach the
-  cloud? (Without internet it does not; section 6.)
 - Offline wake after an overnight standby (tested so far: 5–13 min), after an
   HA restart during standby, and after a module restart without internet
   (expected to fail at registration, 2.2).

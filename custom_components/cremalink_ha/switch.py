@@ -65,7 +65,7 @@ class CremalinkPowerSwitch(CoordinatorEntity, SwitchEntity):
             await self.device.power_on()
         except EcamError as err:
             raise HomeAssistantError(f"Could not switch the machine on: {err}") from err
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_request_fresh_state()
 
     async def async_turn_off(self, **kwargs):
         """Put the machine into standby; returns once it confirms."""
@@ -73,4 +73,4 @@ class CremalinkPowerSwitch(CoordinatorEntity, SwitchEntity):
             await self.device.power_off()
         except EcamError as err:
             raise HomeAssistantError(f"Could not switch the machine off: {err}") from err
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_request_fresh_state()
