@@ -1,0 +1,7 @@
+capture.env
+fritz.cred
+ha_key
+ha_key.pub
+known_hosts
+pcap/
+halog/

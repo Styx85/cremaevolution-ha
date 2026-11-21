@@ -1,0 +1,12 @@
+[Unit]
+Description=Home Assistant debug log of the coffee machine integration
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/root/ecam-capture/halog.sh
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
