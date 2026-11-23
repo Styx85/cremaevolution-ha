@@ -44,6 +44,7 @@ async def async_get_config_entry_diagnostics(
             "update_interval_seconds": settings.update_interval.total_seconds()
             if settings.update_interval else None,
             "standby_reads_skipped": settings.standby_reads_skipped,
+            "busy_reads_skipped": settings.busy_reads_skipped,
         },
         "identity": {
             "transport": "ayla_lan",

@@ -19,6 +19,7 @@ STANDBY, AWAKE = SimpleNamespace(status=0), SimpleNamespace(status=7)
 def _device(state: Any) -> MagicMock:
     device = MagicMock()
     device.state = state
+    device.is_busy = MagicMock(return_value=False)
     device.profile.settings = {"auto_off": None}
     device.read_setting = AsyncMock(return_value=3)
     device.read_statistics = AsyncMock(
@@ -165,3 +166,29 @@ async def test_failed_cloud_read_on_manual_refresh_reopens_standby_reads(
     await statistics.async_refresh()
     assert device.read_statistics.await_count == 3
     assert statistics.data["service_properties"]  # last good values kept
+
+
+async def test_settings_skip_rounds_while_the_machine_is_busy(hass: HomeAssistant) -> None:
+    # Settings cannot change while rinsing or brewing, and the machine often
+    # drops the request then: keep the last values, read again when idle.
+    device = _device(AWAKE)
+    settings = SettingsCoordinator(hass, device)
+    await settings.async_refresh()
+    assert device.read_setting.await_count == 1
+    device.is_busy.return_value = True
+    await settings.async_refresh()
+    await settings.async_refresh()
+    assert device.read_setting.await_count == 1
+    assert settings.busy_reads_skipped == 2
+    assert settings.data == {"auto_off": 3}
+    device.is_busy.return_value = False
+    await settings.async_refresh()
+    assert device.read_setting.await_count == 2
+
+
+async def test_first_settings_read_happens_even_when_busy(hass: HomeAssistant) -> None:
+    device = _device(AWAKE)
+    device.is_busy.return_value = True
+    settings = SettingsCoordinator(hass, device)
+    await settings.async_refresh()
+    assert device.read_setting.await_count == 1

@@ -4,6 +4,21 @@ Newest first. Release notes with downloads are on the
 [releases page](https://github.com/Styx85/cremaevolution-ha/releases); versions
 before 0.3 are listed there only.
 
+## 0.3.13: Stable release; fewer "no answer" settings reads
+
+Uses aioecam 0.1.7b1. First regular release since 0.3.8b1; it contains
+everything from 0.3.9b1 to 0.3.12b1 below (product code, rejected sign-ins
+logged, far less cloud traffic in standby).
+
+- Settings (auto-off, water hardness) are no longer read while the machine is
+  busy (heating up, rinsing, brewing, cleaning the milk system). They cannot
+  be changed then, and the machine often dropped the request: on 22 and 23
+  November a read timed out after 10 s in 9 of 44 rounds. The last values stay;
+  the next round reads again once the machine is idle.
+- Reads while the machine is idle can still time out now and then; the cause
+  is still open. The last values stay in that case too.
+- Diagnostics count the skipped busy rounds.
+
 ## 0.3.12b1: No statistics and settings reads in standby
 
 Uses aioecam 0.1.7b1.
