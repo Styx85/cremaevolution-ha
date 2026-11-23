@@ -4,6 +4,21 @@ Newest first. Release notes with downloads are on the
 [releases page](https://github.com/Styx85/cremaevolution-ha/releases); versions
 before 0.3 are listed there only.
 
+## 0.3.14: Sign-in like the current Coffee Link app
+
+Uses aioecam 0.1.8.
+
+- Setup signs in the way the current Coffee Link app does (Gigya mobile
+  login, then the app's Ayla sign-in). If that fails for any reason other
+  than a wrong email or password, it falls back to the previous web login.
+  For accounts where setup kept saying "Email or password is wrong" although
+  the same account works elsewhere
+  ([#37](https://github.com/Styx85/cremaevolution-ha/issues/37)).
+- A wrong password still stops after the first attempt, so the account does
+  not get a second failed login.
+- Checked on an ECAM610.75 account: sign-in, machine list and local key work
+  with the new login.
+
 ## 0.3.13: Stable release; fewer "no answer" settings reads
 
 Uses aioecam 0.1.7b1. First regular release since 0.3.8b1; it contains
