@@ -74,8 +74,12 @@ def _profile_selector() -> SelectSelector:
     )
 
 
-def _entry_data(machine: OnboardedMachine, refresh_token: str) -> dict[str, Any]:
+def _entry_data(
+    machine: OnboardedMachine, refresh_token: str, login_flow: str | None
+) -> dict[str, Any]:
     return {
+        # Which cloud login worked ("mobile" or "web"); shows up in diagnostics.
+        "login_flow": login_flow,
         "oem_model": machine.device.oem_model,
         CONF_DSN: machine.device.dsn,
         CONF_DEVICE_IP: machine.device.lan_ip,
@@ -92,6 +96,7 @@ class CremalinkConfigFlow(ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         self._machines: dict[str, OnboardedMachine] = {}
         self._refresh_token: str | None = None
+        self._login_flow: str | None = None
         self._cloud_machine: OnboardedMachine | None = None
 
     @staticmethod
@@ -112,6 +117,7 @@ class CremalinkConfigFlow(ConfigFlow, domain=DOMAIN):
             _LOGGER.debug("onboarding failed: %s", err)
             return {"base": "cannot_connect"}
         self._refresh_token = result.refresh_token
+        self._login_flow = result.login_flow
         self._machines = {m.device.dsn: m for m in result.machines}
         if not self._machines:
             return {"base": "no_machines"}
@@ -153,7 +159,8 @@ class CremalinkConfigFlow(ConfigFlow, domain=DOMAIN):
             return await self.async_step_cloud_confirm()
         assert self._refresh_token
         return self.async_create_entry(
-            title=machine.device.name or dsn, data=_entry_data(machine, self._refresh_token)
+            title=machine.device.name or dsn,
+            data=_entry_data(machine, self._refresh_token, self._login_flow),
         )
 
     async def async_step_cloud_confirm(
@@ -167,7 +174,7 @@ class CremalinkConfigFlow(ConfigFlow, domain=DOMAIN):
             # Keep the choice: a later local key must not switch it silently.
             return self.async_create_entry(
                 title=name,
-                data=_entry_data(machine, self._refresh_token),
+                data=_entry_data(machine, self._refresh_token, self._login_flow),
                 options={CONF_CONNECTION: CONNECTION_CLOUD},
             )
         return self.async_show_form(
@@ -228,8 +235,9 @@ class CremalinkConfigFlow(ConfigFlow, domain=DOMAIN):
                 else:
                     # Without a LAN key the entry continues in cloud mode.
                     assert self._refresh_token
+                    new_data = _entry_data(machine, self._refresh_token, self._login_flow)
                     return self.async_update_reload_and_abort(
-                        entry, data={**entry.data, **_entry_data(machine, self._refresh_token)}
+                        entry, data={**entry.data, **new_data}
                     )
         return self.async_show_form(
             step_id="reauth_confirm",
