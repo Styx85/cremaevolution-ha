@@ -29,8 +29,10 @@ _LOGGER = logging.getLogger(__name__)
 
 # Settings can only be changed at the display while the machine is awake, so
 # follow them closely then. In standby the interval only decides how soon the
-# read after waking up happens; nothing is read while nothing can change. A
-# read lost while the machine is busy (e.g. rinsing) is retried next round.
+# read after waking up happens; nothing is read while nothing can change.
+# While the machine is busy (rinsing, brewing, cleaning) settings cannot be
+# changed either, and the machine often drops the request (several "no
+# answer" timeouts a day), so those rounds are skipped too.
 SETTINGS_INTERVAL_AWAKE = timedelta(seconds=60)
 SETTINGS_INTERVAL_STANDBY = timedelta(minutes=15)
 
@@ -55,6 +57,7 @@ class SettingsCoordinator(DataUpdateCoordinator[dict[str, int | None]]):
         self._awake_seen = 0
         self._read_at = -1  # _awake_seen when the last complete standby read began
         self.standby_reads_skipped = 0
+        self.busy_reads_skipped = 0
 
     def _awake(self) -> bool:
         state = self.device.state
@@ -96,6 +99,9 @@ class SettingsCoordinator(DataUpdateCoordinator[dict[str, int | None]]):
         began = self._awake_seen
         if standby and self.data is not None and self._read_at == began:
             self.standby_reads_skipped += 1
+            return self.data
+        if self.data is not None and self.device.is_busy():
+            self.busy_reads_skipped += 1
             return self.data
         values: dict[str, int | None] = dict(self.data or {})
         errors = []
