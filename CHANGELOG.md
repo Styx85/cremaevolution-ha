@@ -4,6 +4,19 @@ Newest first. Release notes with downloads are on the
 [releases page](https://github.com/Styx85/cremaevolution-ha/releases); versions
 before 0.3 are listed there only.
 
+## 0.3.15: Diagnostics say which sign-in worked
+
+Uses aioecam 0.1.9.
+
+- Setup and re-authentication remember which cloud login worked: the one of
+  the current Coffee Link app (`mobile`) or the older web login (`web`). It is
+  listed as `login_flow` under `entry_data` in the diagnostics, so a report
+  shows it without debug logs. Entries set up before 0.3.15 show it once they
+  sign in to the cloud again (re-authentication, or removing and adding the
+  machine). Manually set up entries have no cloud login and show none.
+- With debug logging for `aioecam`, a successful sign-in now logs which login
+  was used.
+
 ## 0.3.14: Sign-in like the current Coffee Link app
 
 Uses aioecam 0.1.8.

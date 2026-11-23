@@ -30,7 +30,7 @@ def _machine(dsn: str = DSN, *, lan_key: str | None = LAN_KEY, name: str = "Soul
 
 
 def _onboarding(*machines: OnboardedMachine) -> AsyncMock:
-    return AsyncMock(return_value=Onboarding(refresh_token="refresh-1", machines=list(machines)))
+    return AsyncMock(return_value=Onboarding(refresh_token="refresh-1", machines=list(machines), login_flow="mobile"))
 
 
 async def _start(hass: HomeAssistant) -> dict[str, Any]:
@@ -48,7 +48,8 @@ async def test_login_single_machine_creates_entry(hass: HomeAssistant) -> None:
     assert result["title"] == "Soul"
     assert result["data"] == {"dsn": DSN, "device_ip": "192.168.1.50", "lan_key": LAN_KEY,
                               "key_id": 58915, "profile": "ecam61x",
-                              "refresh_token": "refresh-1", "oem_model": "DL-millcore"}  # fmt: skip
+                              "refresh_token": "refresh-1", "oem_model": "DL-millcore",
+                              "login_flow": "mobile"}  # fmt: skip
     assert "password" not in result["data"] and "email" not in result["data"]
     assert result["result"].unique_id == DSN
 
@@ -154,6 +155,7 @@ async def test_reauth_fills_in_lan_key(hass: HomeAssistant) -> None:
     assert result["type"] is FlowResultType.ABORT and result["reason"] == "reauth_successful"
     assert entry.data["lan_key"] == LAN_KEY and entry.data["device_ip"] == "192.168.1.50"
     assert entry.data["refresh_token"] == "refresh-1"
+    assert entry.data["login_flow"] == "mobile"
 
 
 async def test_key_without_address_is_offered_the_cloud(hass: HomeAssistant) -> None:
